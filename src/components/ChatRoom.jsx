@@ -4,12 +4,73 @@ import { supabase } from '../services/supabase';
 
 const CHEAT_CODE = '透透透透';
 const CHEAT_USER = '莫拉咕';
+const HAND_NAMES = ['高牌', '一对', '两对', '三条', '顺子', '同花', '葫芦', '四条', '同花顺'];
 
 function cardText(card) {
   if (!card) return '??';
   const rank = card.r === 14 ? 'A' : card.r === 13 ? 'K' : card.r === 12 ? 'Q' : card.r === 11 ? 'J' : String(card.r);
   const suit = { s: '♠', h: '♥', d: '♦', c: '♣' }[card.s] || '';
   return `${rank}${suit}`;
+}
+
+function evaluate5(cards) {
+  const ranks = cards.map(c => c.r).sort((a, b) => b - a);
+  const suits = cards.map(c => c.s);
+  const isFlush = suits.every(s => s === suits[0]);
+  const counts = {};
+  for (const r of ranks) counts[r] = (counts[r] || 0) + 1;
+  const byCount = Object.entries(counts)
+    .map(([r, c]) => [Number(r), c])
+    .sort((a, b) => (b[1] - a[1]) || (b[0] - a[0]));
+  const uniq = [...new Set(ranks)];
+  let straightHigh = null;
+  if (uniq.length === 5) {
+    if (uniq[0] - uniq[4] === 4) straightHigh = uniq[0];
+    else if (uniq.join(',') === '14,5,4,3,2') straightHigh = 5;
+  }
+  if (straightHigh && isFlush) return [8, straightHigh];
+  if (byCount[0][1] === 4) return [7, byCount[0][0], byCount[1][0]];
+  if (byCount[0][1] === 3 && byCount[1]?.[1] === 2) return [6, byCount[0][0], byCount[1][0]];
+  if (isFlush) return [5, ...ranks];
+  if (straightHigh) return [4, straightHigh];
+  if (byCount[0][1] === 3) return [3, byCount[0][0], ...byCount.slice(1).map(x => x[0])];
+  if (byCount[0][1] === 2 && byCount[1]?.[1] === 2) {
+    const pairs = [byCount[0][0], byCount[1][0]].sort((a, b) => b - a);
+    return [2, ...pairs, byCount[2][0]];
+  }
+  if (byCount[0][1] === 2) return [1, byCount[0][0], ...byCount.slice(1).map(x => x[0])];
+  return [0, ...ranks];
+}
+
+function compareScore(a, b) {
+  for (let i = 0; i < Math.max(a.length, b.length); i++) {
+    const av = a[i] ?? 0, bv = b[i] ?? 0;
+    if (av !== bv) return av - bv;
+  }
+  return 0;
+}
+
+function bestScore(cards) {
+  if (cards.length < 5) return [-1];
+  let best = null;
+  for (let a = 0; a < cards.length; a++) {
+    for (let b = a + 1; b < cards.length; b++) {
+      for (let c = b + 1; c < cards.length; c++) {
+        for (let d = c + 1; d < cards.length; d++) {
+          for (let e = d + 1; e < cards.length; e++) {
+            const score = evaluate5([cards[a], cards[b], cards[c], cards[d], cards[e]]);
+            if (!best || compareScore(score, best) > 0) best = score;
+          }
+        }
+      }
+    }
+  }
+  return best || [-1];
+}
+
+function handName(cards) {
+  const score = bestScore(cards);
+  return score[0] >= 0 ? HAND_NAMES[score[0]] : '牌型未形成';
 }
 
 function MiniCard({ card, muted = false }) {
@@ -90,6 +151,9 @@ export default function ChatRoom({ roomCode, username, room }) {
                 {(player.cards || []).map((card, i) => <MiniCard key={i} card={card} />)}
                 {(!player.cards || player.cards.length === 0) && <span className="god-none">无底牌</span>}
               </span>
+              {player.cards?.length === 2 && knownBoard.filter(Boolean).length >= 3 && (
+                <span className="god-hand-type">最大牌型：{handName([...player.cards, ...knownBoard.filter(Boolean)])}</span>
+              )}
             </div>
           ))}
         </div>
