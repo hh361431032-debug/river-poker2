@@ -1,21 +1,21 @@
 .table-area{position:relative}
 
-/* Keep the waiting status on the table and out of document flow. */
+/* Waiting status stays out of document flow, but sits below the table instead of over the cards. */
 .table-area>.wait-action{
   position:absolute;
   left:50%;
-  top:50%;
-  transform:translate(-50%,-50%);
+  top:calc(50% + 185px);
+  transform:translateX(-50%);
   z-index:25;
   width:max-content;
   max-width:calc(100% - 24px);
   box-sizing:border-box;
   margin:0;
   padding:7px 14px;
-  border:1px solid rgba(201,162,39,.38);
+  border:1px solid rgba(201,162,39,.30);
   border-radius:999px;
-  background:rgba(0,0,0,.48);
-  color:#d2ccbd;
+  background:rgba(0,0,0,.38);
+  color:#bcb5a7;
   font-size:11px;
   line-height:1.35;
   text-align:center;
@@ -25,6 +25,7 @@
 
 @media(max-width:520px){
   .table-area>.wait-action{
+    top:calc(50% + 150px);
     max-width:calc(100% - 16px);
     padding:6px 10px;
     font-size:9px;
