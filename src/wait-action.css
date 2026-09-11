@@ -1,10 +1,10 @@
 .table-area{position:relative}
 
-/* Waiting status stays out of document flow, but sits below the table instead of over the cards. */
+/* Waiting status sits in the open felt area directly below the community cards. */
 .table-area>.wait-action{
   position:absolute;
   left:50%;
-  top:calc(50% + 185px);
+  top:calc(50% + 70px);
   transform:translateX(-50%);
   z-index:25;
   width:max-content;
@@ -25,7 +25,7 @@
 
 @media(max-width:520px){
   .table-area>.wait-action{
-    top:calc(50% + 150px);
+    top:calc(50% + 55px);
     max-width:calc(100% - 16px);
     padding:6px 10px;
     font-size:9px;
