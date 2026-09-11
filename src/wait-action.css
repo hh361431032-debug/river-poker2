@@ -1,0 +1,32 @@
+.table-area{position:relative}
+
+/* Keep the waiting status on the table and out of document flow. */
+.table-area>.wait-action{
+  position:absolute;
+  left:50%;
+  top:50%;
+  transform:translate(-50%,-50%);
+  z-index:25;
+  width:max-content;
+  max-width:calc(100% - 24px);
+  box-sizing:border-box;
+  margin:0;
+  padding:7px 14px;
+  border:1px solid rgba(201,162,39,.38);
+  border-radius:999px;
+  background:rgba(0,0,0,.48);
+  color:#d2ccbd;
+  font-size:11px;
+  line-height:1.35;
+  text-align:center;
+  white-space:nowrap;
+  pointer-events:none;
+}
+
+@media(max-width:520px){
+  .table-area>.wait-action{
+    max-width:calc(100% - 16px);
+    padding:6px 10px;
+    font-size:9px;
+  }
+}
