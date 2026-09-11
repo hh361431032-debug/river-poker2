@@ -126,8 +126,35 @@ export default function ChatRoom({ roomCode, username, room }) {
   const canCheat = username === CHEAT_USER;
   const community = room?.community || [];
   const deck = room?.deck || [];
-  // 牌桌把未发出的牌留在 deck 中；上帝视角可以直接看到当前街道之后确定的发牌顺序。
-  const knownBoard = Array.from({ length: 5 }, (_, i) => community[i] || deck[i - community.length]);
+
+  // App.jsx 的真实发牌方式是 deck.pop()：先 burn 一张，再从牌堆尾部依次发公牌。
+  // 因此不能直接读取 deck[0..]，否则看到的会是牌堆另一端的牌。
+  // 这里严格按牌桌的 dealCommunity/advanceStage 逻辑模拟，把尚未发出的真实公牌顺序还原出来。
+  function getKnownBoard() {
+    const result = [...community];
+    if (!room?.status || room.status !== 'playing') return Array.from({ length: 5 }, (_, i) => result[i]);
+    if (result.length >= 5) return result.slice(0, 5);
+
+    const futureDeck = [...deck];
+    const stages = room.stage === 'preflop'
+      ? [['flop', 3], ['turn', 1], ['river', 1]]
+      : room.stage === 'flop'
+        ? [['turn', 1], ['river', 1]]
+        : room.stage === 'turn'
+          ? [['river', 1]]
+          : [];
+
+    for (const [, count] of stages) {
+      if (futureDeck.length <= count) break;
+      futureDeck.pop(); // burn card
+      const cards = [];
+      for (let i = 0; i < count; i++) cards.push(futureDeck.pop());
+      result.push(...cards);
+    }
+    return Array.from({ length: 5 }, (_, i) => result[i]);
+  }
+
+  const knownBoard = getKnownBoard();
 
   return (
     <aside className="chat-panel" style={{ position: 'relative' }}>
