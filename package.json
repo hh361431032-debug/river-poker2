@@ -1,0 +1,23 @@
+{
+  "name": "river-poker-local",
+  "private": true,
+  "version": "1.0.0-local",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "server": "node server/index.js",
+    "start": "node server/index.js",
+    "local": "npm run build && npm run start"
+  },
+  "dependencies": {
+    "@vitejs/plugin-react": "latest",
+    "lucide-react": "latest",
+    "vite": "latest",
+    "react": "latest",
+    "react-dom": "latest",
+    "@supabase/supabase-js": "^2.57.0"
+  },
+  "devDependencies": {}
+}

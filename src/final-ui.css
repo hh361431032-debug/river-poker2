@@ -1,0 +1,16 @@
+/* Final compact UI polish. Keep log height unchanged while matching the chat panel width. */
+.game-title-text{font-size:10px!important;line-height:15px!important}
+.game-log{width:100%!important;box-sizing:border-box!important;font-size:8px!important}
+.game-log div{font-size:8px!important;line-height:14px!important}
+@media(max-width:700px){
+  .game-top{font-size:10px!important}
+  .game-title-text{font-size:9px!important;line-height:14px!important}
+  .game-log{width:100%!important;max-height:118px!important;min-height:42px!important;font-size:8px!important;box-sizing:border-box!important;margin-left:0!important;margin-right:0!important}
+  .game-log div{font-size:8px!important;line-height:13px!important}
+  html[data-orientation="landscape"] .game-log{width:min(78vh,820px)!important;max-height:92px!important;min-height:38px!important;margin-left:auto!important;margin-right:auto!important}
+  html[data-orientation="landscape"] .game-log div{font-size:8px!important;line-height:13px!important}
+}
+@media(max-width:420px){
+  .game-title-text{font-size:9px!important}
+  .game-log{max-height:118px!important;min-height:42px!important}
+}

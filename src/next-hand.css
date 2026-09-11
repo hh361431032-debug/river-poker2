@@ -1,0 +1,22 @@
+/* Put the host's "开始下一局" control directly on the table, in the open area below the community cards. */
+@media (max-width:700px){
+  .table-area{position:relative!important}
+  .table-area > .actions:has(> .primary:only-child){
+    position:absolute!important;
+    z-index:40!important;
+    left:50%!important;
+    top:55%!important;
+    transform:translate(-50%,-50%)!important;
+    margin:0!important;
+    width:auto!important;
+  }
+  .table-area > .actions:has(> .primary:only-child) .primary{
+    white-space:nowrap!important;
+    padding:9px 18px!important;
+    min-height:38px!important;
+    box-shadow:0 5px 14px rgba(0,0,0,.38)!important;
+  }
+  html[data-orientation="landscape"] .table-area > .actions:has(> .primary:only-child){
+    top:57%!important;
+  }
+}
