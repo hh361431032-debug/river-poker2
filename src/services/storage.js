@@ -88,10 +88,7 @@ export const storage = {
           : data.state;
 
       return {
-        value: JSON.stringify({
-          ...state,
-          syncUpdatedAt: Date.now(),
-        }),
+        value: JSON.stringify(state),
       };
     }
 
@@ -259,7 +256,6 @@ export const storage = {
 
       if (error) throw error;
 
-      notify();
       return { success: true };
     }
 
