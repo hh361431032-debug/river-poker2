@@ -75,7 +75,7 @@ export const storage = {
       const code = key.replace("poker:room:", "");
       const { data, error } = await supabase
         .from("poker_rooms")
-        .select("state")
+        .select("state,updated_at")
         .eq("code", code)
         .maybeSingle();
 
@@ -89,6 +89,7 @@ export const storage = {
 
       return {
         value: JSON.stringify(state),
+        updatedAt: data.updated_at || null,
       };
     }
 
@@ -190,7 +191,7 @@ export const storage = {
     return { success: true };
   },
 
-  async set(key, value) {
+  async set(key, value, options = {}) {
     if (key === "poker:session") {
       localStorage.setItem(localKey(key), value);
       notify();
@@ -242,9 +243,47 @@ export const storage = {
     if (key.startsWith("poker:room:")) {
       const code = key.replace("poker:room:", "");
       const state = JSON.parse(value);
-      const meta = roomMetaFromState(state);
 
-      const { error } = await supabase
+      // Gameplay writes use compare-and-swap semantics. A client may only
+      // overwrite the exact room version it previously read. This prevents a
+      // delayed packet from an offline/laggy player from resurrecting an old
+      // table state after everyone has already moved on.
+      if (options.expectedUpdatedAt) {
+        const expected = String(options.expectedUpdatedAt);
+        const nextUpdatedAt = new Date(
+          Math.max(Date.now(), (Date.parse(expected) || 0) + 1)
+        ).toISOString();
+
+        const { data, error } = await supabase
+          .from("poker_rooms")
+          .update({
+            name: state.name,
+            host_name: state.hostName,
+            player_count: Array.isArray(state.players) ? state.players.length : 0,
+            status: state.status || "waiting",
+            state,
+            updated_at: nextUpdatedAt,
+          })
+          .eq("code", code)
+          .eq("updated_at", expected)
+          .select("updated_at")
+          .maybeSingle();
+
+        if (error) throw error;
+
+        if (!data) {
+          return { success: false, conflict: true };
+        }
+
+        return {
+          success: true,
+          conflict: false,
+          updatedAt: data.updated_at,
+        };
+      }
+
+      const meta = roomMetaFromState(state);
+      const { data, error } = await supabase
         .from("poker_rooms")
         .upsert(
           {
@@ -252,11 +291,17 @@ export const storage = {
             state,
           },
           { onConflict: "code" }
-        );
+        )
+        .select("updated_at")
+        .single();
 
       if (error) throw error;
 
-      return { success: true };
+      return {
+        success: true,
+        conflict: false,
+        updatedAt: data.updated_at,
+      };
     }
 
     return { success: true };
