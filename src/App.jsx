@@ -4,7 +4,7 @@ import { pokerActions } from "./services/gameActions";
 import { supabase } from "./services/supabase";
 import AuthScreen from "./components/AuthScreen";
 import Lobby from "./components/Lobby";
-import GameTable from "./components/PokerTable";
+import GameTable, { WaitingRoom } from "./components/PokerTable";
 
 function RoomController({code,username,avatar,initialState=null,initialPlayerToken="",onAvatarChange,onLeaveLobby}){
   const [room,setRoom]=useState(initialState), busy=useRef(false), roomJsonRef=useRef(initialState?JSON.stringify(initialState):""), roomUpdatedAtRef=useRef(null), playerTokenRef=useRef(initialPlayerToken||"");
