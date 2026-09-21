@@ -4,6 +4,7 @@ import { pokerActions } from "../services/gameActions";
 import { supabase } from "../services/supabase";
 import { Avatar, AvatarPicker } from "./CommonUI";
 import { MAX_PLAYERS } from "../game/gameEngine";
+import { playSound } from "../services/sound";
 
 const ADMIN_USERNAME = "莫拉咕";
 
