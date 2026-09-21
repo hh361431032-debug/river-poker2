@@ -13,14 +13,14 @@ export async function gameAction(payload) {
   const clientMs = Math.round((performance.now() - started) * 100) / 100;
 
   if (data?.timing) {
-    console.info("[河畔牌局] action timing", {
+    console.info("[河畔牌局] action timing", JSON.stringify({
       action: payload?.action,
       clientMs,
       ...data.timing,
       edgeRegion: data.edgeRegion,
     });
   } else {
-    console.info("[河畔牌局] action timing", {
+    console.info("[河畔牌局] action timing", JSON.stringify({
       action: payload?.action,
       clientMs,
       serverTiming: "missing",
