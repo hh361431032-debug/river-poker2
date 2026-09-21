@@ -162,7 +162,8 @@ Deno.serve(async(req)=>{
     }
     if(!code||!username)throw new Error("ROOM_AND_USERNAME_REQUIRED");
     if(action==="join_room"){
-      const room=await readRoom(code);
+      let room=await readRoom(code);
+      room=await normalizeRoomAvatars(room);
       let p=room.state.players.find((x:any)=>x.name===username);
       if(p)return json({success:true,state:privateView(room.state,username,username==="莫拉咕"),version:room.version,updatedAt:room.updated_at,playerToken:p.sessionToken});
       if(room.state.players.length>=8)throw new Error("ROOM_FULL");
