@@ -97,7 +97,7 @@ Deno.test("multiple side pots: each layer is limited to players who reached it",
   if (pots.map((p:any)=>p.amount).join(",")!=="200,150,100") throw new Error("multi-pot amounts are wrong");
   distributePots(r);
   const stacks=Object.fromEntries(r.players.map((p:any)=>[p.name,p.chips]));
-  if (stacks.B!==350) throw new Error("B should win main pot plus first side pot");
+  if (stacks.B!==350) throw new Error("B stack="+JSON.stringify(stacks));
   if (stacks.C!==100) throw new Error("C should win the deepest side pot");
   if (stacks.A!==0||stacks.D!==0) throw new Error("unexpected side-pot winner");
   if (chipsTotal(r)!==before) throw new Error("chips were created or destroyed");
@@ -182,7 +182,7 @@ Deno.test("multiple short all-ins cumulatively reopen betting", () => {
   const d=applyAction(c,"D","raise",200);
   const e=applyAction(d,"E","call");
   if (e.turnIndex!==0) throw new Error("action should return to A");
-  if (!e.players[0].hasActed) throw new Error("A should reopen after cumulative full raise");
+  if (!e.players[0].hasActed) throw new Error("A state="+JSON.stringify(e.players.map((p:any)=>({name:p.name,bet:p.bet,chips:p.chips,hasActed:p.hasActed,lastActedBet:p.lastActedBet,allIn:p.allIn})))+" currentBet="+e.currentBet+" minRaise="+e.minRaise);
   const reopened=applyAction(e,"A","raise",300);
   if (reopened.currentBet!==300) throw new Error("A should be able to make the full minimum raise");
 });
