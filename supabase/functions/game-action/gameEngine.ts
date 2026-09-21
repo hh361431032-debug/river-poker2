@@ -144,7 +144,6 @@ function distributePots(r:any){
     const winner=r.players.find((p:any)=>p.inHand&&!p.folded);
     if(winner){
       winner.chips+=pending;
-      awarded+=pending;
       r.log.push(\`${winner.name} 赢得 ${pending} 筹码（无其他有效竞争者）\`);
     }
   }
