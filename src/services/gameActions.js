@@ -8,7 +8,15 @@ export async function gameAction(payload) {
   });
 
   if (error) {
-    throw new Error(error.message || "牌局服务器请求失败");
+    let detail = error.message || "牌局服务器请求失败";
+    try {
+      const response = error.context;
+      if (response && typeof response.json === "function") {
+        const body = await response.clone().json();
+        if (body?.error) detail = body.error;
+      }
+    } catch {}
+    throw new Error(detail);
   }
 
   if (!data?.success) {
@@ -19,8 +27,6 @@ export async function gameAction(payload) {
 }
 
 export const pokerActions = {
-  listRooms: () => gameAction({ action: "list_rooms" }),
-
   listRooms: () => gameAction({ action: "list_rooms" }),
 
   getRoom: (roomCode, username, playerToken = "") =>
@@ -64,8 +70,6 @@ export const pokerActions = {
 
   tick: (roomCode, username, playerToken) =>
     gameAction({ action: "tick", roomCode, username, playerToken }),
-
-  deleteRoom: (roomCode, username) => gameAction({ action: "delete_room", roomCode, username }),
 
   deleteRoom: (roomCode, username) =>
     gameAction({ action: "delete_room", roomCode, username }),
