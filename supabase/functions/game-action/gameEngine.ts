@@ -235,15 +235,16 @@ export function applyAction(room:any,name:string,action:string,amount?:number){
     const raiseTo=Math.min(Number(amount)||0,maxRaiseTo),delta=raiseTo-p.bet;
     const isAllIn=raiseTo===maxRaiseTo;
     if(delta<=0||raiseTo<=r.currentBet)throw new Error("INVALID_RAISE");
+    if(p.hasActed&&r.currentBet>p.bet)throw new Error("REOPEN_REQUIRED");
     const previousMinRaise=r.minRaise;
     const minimumRaiseTo=r.currentBet+previousMinRaise;
     if(raiseTo<minimumRaiseTo&&!isAllIn)throw new Error("MINIMUM_RAISE");
     p.chips-=delta;p.bet=raiseTo;p.totalContributed+=delta;r.pot+=delta;if(!p.chips)p.allIn=true;
     const size=raiseTo-r.currentBet;r.currentBet=raiseTo;if(size>=previousMinRaise)r.minRaise=size;
     r.players.forEach((pl:any,i:number)=>{
-      if(i===idx||!pl.inHand||pl.folded||pl.allIn||!pl.hasActed)return;
+      if(i===idx||!pl.inHand||pl.folded||pl.allIn)return;
       const facedSinceLastAction=r.currentBet-(Number(pl.lastActedBet)||0);
-      if(facedSinceLastAction>=previousMinRaise)pl.hasActed=false;
+      if(pl.hasActed&&facedSinceLastAction>=previousMinRaise)pl.hasActed=false;
     });
     p.hasActed=true;p.lastActedBet=p.bet;r.log.push(`${p.name} 加注到 ${raiseTo}`);
   } else throw new Error("UNKNOWN_ACTION");
