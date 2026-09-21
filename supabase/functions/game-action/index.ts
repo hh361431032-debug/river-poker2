@@ -273,6 +273,7 @@ Deno.serve(async(req)=>{
       }
       default:throw new Error("UNKNOWN_ACTION");
     }
+    timing.engineMs=Math.round((performance.now()-engineStarted)*100)/100;
     if(next===null){
       await db.from("poker_rooms").delete().eq("code",code);publishLobby();
       return json({success:true,deleted:true});
@@ -283,6 +284,6 @@ Deno.serve(async(req)=>{
   }catch(e){
     const msg=errorMessage(e);
     const map:any={ROOM_NOT_FOUND:404,PLAYER_NOT_IN_ROOM:403,SESSION_INVALID:403,NOT_YOUR_TURN:409,ROOM_VERSION_CONFLICT:409,ROOM_FULL:409,NOT_HOST:403,NOT_ENOUGH_PLAYERS:409,NOT_ADMIN:403,MINIMUM_RAISE:400,REOPEN_REQUIRED:400,INVALID_GAME_STATE:409};
-    return json({success:false,error:msg},map[msg]||400);
+    return json({success:false,error:msg,timing,edgeRegion:Deno.env.get("SB_REGION")||"unknown"},map[msg]||400);
   }
 });
