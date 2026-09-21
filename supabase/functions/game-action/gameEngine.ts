@@ -91,7 +91,7 @@ function distributePots(r:any){
   const levels=[...new Set(contributors.map((p:any)=>p.totalContributed))].sort((a,b)=>a-b);
   let prev=0;
   let pending=0;
-  let awarded=0;
+  let lastWinners:any[]=[];
 
   // Build each contribution layer from the bottom up. Folded players still
   // contribute chips to the layer, but are never eligible to win it.
@@ -109,8 +109,14 @@ function distributePots(r:any){
       continue;
     }
 
-    const potAmount=amount+pending;
-    pending=0;
+    if(pending>0 && lastWinners.length){
+      const share=Math.floor(pending/lastWinners.length);
+      const remainder=pending-share*lastWinners.length;
+      lastWinners.forEach((w:any,i:number)=>{w.p.chips+=share+(i<remainder?1:0);});
+      pending=0;
+    }
+
+    const potAmount=amount;
     const scored=contenders.map((p:any)=>({
       p,
       score:bestScore([...p.cards,...r.community])
@@ -125,7 +131,7 @@ function distributePots(r:any){
       w.p.chips+=share+(i<remainder?1:0);
     });
 
-    awarded+=potAmount;
+    lastWinners=winners;
     r.log.push(
       \`${winners.map((w:any)=>w.p.name).join("、")} 以「${HAND_NAMES[top[0]]}」赢得 ${potAmount} 筹码\`
     );
