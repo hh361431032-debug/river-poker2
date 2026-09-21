@@ -20,11 +20,29 @@ function RoomController({code,username,avatar,initialState=null,initialPlayerTok
   },[]);
   const load=useCallback(async(payload=null,force=false)=>{
     if(busy.current&&!force)return;
+
+    // Realtime 只负责“通知状态变了”，不要再次执行 join_room。
+    // join_room 会读写/广播房间状态，连续触发会造成大量重复请求。
     const incomingVersion=Number(payload?.new?.version||0);
     if(incomingVersion&&incomingVersion<=Number(roomVersionRef.current||0))return;
+
     try{
-      const res=await pokerActions.joinRoom(code,username,avatar||null);
+      const token=playerTokenRef.current;
+      let res;
+
+      // 已经在房间：只读最新状态。
+      // 没有 token：说明是通过直链进入，首次需要真正 join 一次。
+      if(token){
+        res=await pokerActions.getRoom(code,username,token);
+      }else{
+        res=await pokerActions.joinRoom(code,username,avatar||null);
+      }
+
       if(res?.deleted){onLeaveLobby();return;}
+      if(res?.member===false){
+        // 直链进入且尚未入座，保持现有加入流程。
+        res=await pokerActions.joinRoom(code,username,avatar||null);
+      }
       applyServerResult(res);
     }catch(err){
       console.error("[河畔牌局] 房间加载失败：",err);
