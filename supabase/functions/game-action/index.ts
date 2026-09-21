@@ -1,0 +1,242 @@
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { applyAction, kickPlayer, leaveRoom, privateView, publicView, startHand, throwItem, validateRoomState } from "./gameEngine.ts";
+import { corsHeaders, json } from "./cors.ts";
+
+const supabaseUrl=Deno.env.get("SUPABASE_URL")!;
+const serviceKey=Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+const db=createClient(supabaseUrl,serviceKey,{auth:{persistSession:false}});
+
+function token(){return crypto.randomUUID()+crypto.randomUUID();}
+function errorMessage(e:any){return e?.message||"操作失败";}
+async function sendBroadcast(topic:string,event:string,payload:any){
+  const projectUrl=supabaseUrl.replace(/\/$/,"");
+  await fetch(`${projectUrl}/realtime/v1/api/broadcast/${encodeURIComponent(topic)}/events/${encodeURIComponent(event)}`,{
+    method:"POST",
+    headers:{"apikey":serviceKey,"Authorization":`Bearer ${serviceKey}`,"Content-Type":"application/json"},
+    body:JSON.stringify(payload),
+  });
+}
+async function broadcastLobby(){await sendBroadcast("poker-lobby-v2","lobby",{at:Date.now()})}
+async function broadcast(code:string,state:any,version:number,updatedAt:string){
+  // Public room state is emitted by the Postgres AFTER UPDATE trigger.
+  // Keep this path only for per-player private state.
+  await Promise.all(
+    state.players.filter((p:any)=>p.sessionToken).map((p:any)=>
+      sendBroadcast(`room:${code}:player:${p.sessionToken}`,"private_state",{
+        version,updatedAt,
+        state:privateView(state,p.name,p.name==="莫拉咕")
+      })
+    )
+  );
+}
+function publish(code:string,state:any,version:number,updatedAt:string){
+  EdgeRuntime.waitUntil(broadcast(code,state,version,updatedAt).catch(e=>console.error("broadcast failed",e)));
+}
+function publishLobby(){
+  EdgeRuntime.waitUntil(broadcastLobby().catch(e=>console.error("lobby broadcast failed",e)));
+}
+async function readRoom(code:string){
+  const {data,error}=await db.from("poker_rooms").select("code,state,version,updated_at").eq("code",code).maybeSingle();
+  if(error)throw error;if(!data)throw new Error("ROOM_NOT_FOUND");return data;
+}
+async function writeRoom(code:string,state:any,expectedVersion:number,expectedUpdatedAt?:string){
+  validateRoomState(state);
+  const nextVersion=expectedVersion+1;
+  const nextUpdatedAt=new Date(Math.max(Date.now(),(Date.parse(expectedUpdatedAt||"")||0)+1)).toISOString();
+  const {data,error}=await db.from("poker_rooms").update({
+    name:state.name,host_name:state.hostName,player_count:Array.isArray(state.players)?state.players.length:0,
+    status:state.status||"waiting",state,version:nextVersion,updated_at:nextUpdatedAt,
+  }).eq("code",code).eq("version",expectedVersion).select("version,updated_at").maybeSingle();
+  if(error)throw error;
+  if(!data)throw new Error("ROOM_VERSION_CONFLICT");
+  return data;
+}
+function inferLegacyAction(current:any,desired:any,username:string){
+  if(desired.players.length>current.players.length)return {action:"join_room"};
+  if(desired.players.length<current.players.length){
+    const removed=current.players.find((p:any)=>!desired.players.some((q:any)=>q.name===p.name));
+    if(removed&&removed.name===username)return {action:"leave"};
+    if(removed&&current.hostName===username)return {action:"kick",extra:{targetName:removed.name}};
+    return {action:"leave"};
+  }
+  const me=current.players.find((p:any)=>p.name===username),nextMe=desired.players.find((p:any)=>p.name===username);
+  if(!me||!nextMe)throw new Error("PLAYER_NOT_IN_ROOM");
+  if((me.avatar||null)!==(nextMe.avatar||null))return {action:"update_avatar",extra:{avatar:nextMe.avatar||null}};
+  const kicked=current.players.find((p:any)=>{const q=desired.players.find((x:any)=>x.name===p.name);return q&&q.kicked&&!p.kicked});
+  if(kicked&&current.hostName===username)return {action:"kick",extra:{targetName:kicked.name}};
+  if(current.stage==="waiting"&&desired.status==="playing")return {action:"start_hand"};
+  if(current.stage==="handover"&&desired.stage==="playing"&&Number(desired.handNumber)>Number(current.handNumber))return {action:"next_hand"};
+  const oldEffects=current.effects||[],newEffects=desired.effects||[];
+  if(newEffects.length>oldEffects.length){const e=newEffects[newEffects.length-1];if(e?.from===username)return {action:"throw",extra:{targetName:e.to,itemKey:e.item}}}
+  if(current.status==="playing"&&me.inHand&&!me.folded&&!me.allIn){
+    if(nextMe.folded&&!me.folded)return {action:"fold"};
+    if(Number(nextMe.bet)===Number(me.bet)&&nextMe.hasActed&&!me.hasActed&&Number(desired.currentBet)===Number(current.currentBet))return {action:"check"};
+    if(Number(desired.currentBet)>Number(current.currentBet))return {action:"raise",extra:{amount:desired.currentBet}};
+    if(Number(nextMe.bet)>Number(me.bet))return {action:"call"};
+  }
+  throw new Error("UNSUPPORTED_ROOM_MUTATION");
+}
+function playerFor(room:any,username:string,playerToken:string){
+  const p=room.state.players.find((x:any)=>x.name===username);
+  if(!p||!playerToken||p.sessionToken!==playerToken)throw new Error("SESSION_INVALID");
+  return p;
+}
+Deno.serve(async(req)=>{
+  if(req.method==="OPTIONS")return new Response("ok",{headers:corsHeaders});
+  try{
+    const body=await req.json();
+    const action=body?.action;
+    const code=String(body?.roomCode||"").trim().toUpperCase();
+    const username=String(body?.username||"").trim();
+    const playerToken=String(body?.playerToken||"");
+    if(action==="list_rooms"){
+      const {data,error}=await db.from("poker_rooms").select("code,name,host_name,player_count,status,version").neq("status","closed").order("updated_at",{ascending:false});
+      if(error)throw error;
+      return json({success:true,rooms:(data||[]).map(r=>({code:r.code,name:r.name,hostName:r.host_name,playerCount:r.player_count,status:r.status,version:r.version}))});
+    }
+    if(action==="create_room"){
+      if(!username)throw new Error("USERNAME_REQUIRED");
+      const roomCode=code||Array.from({length:5},()=> "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"[Math.floor(Math.random()*32)]).join("");
+      const sessionToken=token();
+      const chips=Math.max(100,Math.min(100000,Number(body.startingChips)||1000));
+      const turnSeconds=Math.max(5,Math.min(300,Number(body.turnSeconds)||30));
+      const room={code:roomCode,name:String(body.name||`${username} 的牌桌`).trim(),hostName:username,status:"waiting",stage:"waiting",startingChips:chips,turnSeconds,players:[{name:username,avatar:body.avatar||null,chips,cards:[],folded:false,allIn:false,bet:0,totalContributed:0,hasActed:false,inHand:false,waitingForNext:false,kicked:false,sessionToken}],dealerIndex:null,turnIndex:null,turnStartedAt:null,deck:[],community:[],pot:0,currentBet:0,minRaise:20,log:[],handNumber:0};
+      const updatedAt=new Date().toISOString();
+      const {error}=await db.from("poker_rooms").insert({code:roomCode,name:room.name,host_name:username,player_count:1,status:"waiting",state:room,version:1,updated_at:updatedAt});
+      if(error)throw error;
+      publish(roomCode,room,1,updatedAt);publishLobby();
+      return json({success:true,code:roomCode,playerToken:sessionToken,state:privateView(room,username,username==="莫拉咕"),version:1,updatedAt});
+    }
+    if(action==="get_room"){
+      const room=await readRoom(code);
+      let changed=false;
+      let p=room.state.players.find((x:any)=>x.name===username);
+      if(p&&!p.sessionToken){p.sessionToken=token();changed=true;}
+      if(changed){
+        const st=await writeRoom(code,room.state,room.version,room.updated_at);
+        room.version=st.version;
+        room.updated_at=st.updated_at;
+        room.state=room.state;
+        publish(code,room.state,room.version,room.updated_at);
+      }
+      if(!p){
+        return json({
+          success:true,
+          member:false,
+          state:publicView(room.state),
+          version:room.version,
+          updatedAt:room.updated_at,
+          playerToken:null
+        });
+      }
+      return json({success:true,member:true,state:privateView(room.state,username,username==="莫拉咕"),version:room.version,updatedAt:room.updated_at,playerToken:p.sessionToken});
+    }
+    if(!code||!username)throw new Error("ROOM_AND_USERNAME_REQUIRED");
+    if(action==="join_room"){
+      const room=await readRoom(code);
+      let p=room.state.players.find((x:any)=>x.name===username);
+      if(p)return json({success:true,state:privateView(room.state,username,username==="莫拉咕"),version:room.version,updatedAt:room.updated_at,playerToken:p.sessionToken});
+      if(room.state.players.length>=8)throw new Error("ROOM_FULL");
+      const chips=Number(room.state.startingChips)||1000;
+      p={name:username,avatar:body.avatar||null,chips,cards:[],folded:false,allIn:false,bet:0,totalContributed:0,hasActed:false,inHand:false,waitingForNext:room.state.status==="playing",kicked:false,sessionToken:token()};
+      const next=structuredClone(room.state);next.players.push(p);
+      const st=await writeRoom(code,next,room.version,room.updated_at);
+      publish(code,next,st.version,st.updated_at);publishLobby();
+      return json({success:true,state:privateView(next,username,username==="莫拉咕"),version:st.version,updatedAt:st.updated_at,playerToken:p.sessionToken});
+    }
+    const room=await readRoom(code);
+    if(action==="delete_room"){
+      if(username!=="莫拉咕")throw new Error("NOT_ADMIN");
+      await db.from("poker_rooms").delete().eq("code",code);publishLobby();
+      return json({success:true,deleted:true});
+    }
+    playerFor(room,username,playerToken);
+    if(action==="reconcile"){
+      const inferred=inferLegacyAction(room.state,body.desiredState,username);
+      if(inferred.action==="join_room"){
+        if(room.state.players.length>=8)throw new Error("ROOM_FULL");
+        const next=structuredClone(room.state);
+        next.players.push({
+          name:username,avatar:body.desiredState.players.find((p:any)=>p.name===username)?.avatar||null,
+          chips:Number(room.state.startingChips)||1000,cards:[],folded:false,allIn:false,bet:0,totalContributed:0,
+          hasActed:false,inHand:false,waitingForNext:room.state.status==="playing",kicked:false,sessionToken:playerToken
+        });
+        const st=await writeRoom(code,next,room.version,room.updated_at);publish(code,next,st.version,st.updated_at);publishLobby();
+        return json({success:true,state:privateView(next,username,username==="莫拉咕"),version:st.version,updatedAt:st.updated_at});
+      }
+      const reconciled=await (async()=>{
+        switch(inferred.action){
+          case "start_hand": return startHand(room.state);
+          case "next_hand": return startHand(room.state);
+          case "fold": return applyAction(room.state,username,"fold");
+          case "check": return applyAction(room.state,username,"check");
+          case "call": return applyAction(room.state,username,"call");
+          case "raise": return applyAction(room.state,username,"raise",inferred.extra.amount);
+          case "throw": return throwItem(room.state,username,inferred.extra.targetName,inferred.extra.itemKey);
+          case "kick": return kickPlayer(room.state,username,inferred.extra.targetName);
+          case "leave": return leaveRoom(room.state,username);
+          case "update_avatar":{
+            const n=structuredClone(room.state);const p=n.players.find((x:any)=>x.name===username);p.avatar=inferred.extra.avatar;return n;
+          }
+          default: throw new Error("UNKNOWN_ACTION");
+        }
+      })();
+      if(reconciled===null){await db.from("poker_rooms").delete().eq("code",code);publishLobby();return json({success:true,deleted:true});}
+      const st=await writeRoom(code,reconciled,room.version,room.updated_at);publish(code,reconciled,st.version,st.updated_at);publishLobby();
+      return json({success:true,state:privateView(reconciled,username,username==="莫拉咕"),version:st.version,updatedAt:st.updated_at});
+    }
+    let next;
+    switch(action){
+      case "start_hand":
+      case "next_hand":
+        if(room.state.hostName!==username)throw new Error("NOT_HOST");
+        if(room.state.players.length<2)throw new Error("NOT_ENOUGH_PLAYERS");
+        next=startHand(room.state);break;
+      case "fold":
+      case "check":
+      case "call":
+      case "raise":
+        next=applyAction(room.state,username,action,body.amount);break;
+      case "throw":
+        next=throwItem(room.state,username,String(body.targetName||""),String(body.itemKey||""));break;
+      case "kick":
+        next=kickPlayer(room.state,username,String(body.targetName||""));break;
+      case "leave":
+        next=leaveRoom(room.state,username);break;
+      case "update_avatar":{
+        const nextState=structuredClone(room.state);
+        const p=nextState.players.find((x:any)=>x.name===username);
+        if(!p)throw new Error("PLAYER_NOT_IN_ROOM");
+        p.avatar=String(body.avatar||"").slice(0,200000)||null;
+        next=nextState;
+        break;
+      }
+      case "tick":{
+        if(room.state.status!=="playing"||!room.state.turnStartedAt) {
+          return json({success:true,state:privateView(room.state,username,username==="莫拉咕"),version:room.version,updatedAt:room.updated_at});
+        }
+        const limit=Number(room.state.turnSeconds||30)*1000;
+        if(Date.now()-Number(room.state.turnStartedAt)<limit) {
+          return json({success:true,state:privateView(room.state,username,username==="莫拉咕"),version:room.version,updatedAt:room.updated_at});
+        }
+        const turnPlayer=room.state.players[room.state.turnIndex];
+        if(!turnPlayer) return json({success:true,state:privateView(room.state,username,username==="莫拉咕"),version:room.version,updatedAt:room.updated_at});
+        next=applyAction(room.state,turnPlayer.name,"fold");
+        next.log.push(`${turnPlayer.name} 行动超时，自动弃牌`);
+        break;
+      }
+      default:throw new Error("UNKNOWN_ACTION");
+    }
+    if(next===null){
+      await db.from("poker_rooms").delete().eq("code",code);publishLobby();
+      return json({success:true,deleted:true});
+    }
+    const st=await writeRoom(code,next,room.version,room.updated_at);
+    publish(code,next,st.version,st.updated_at);publishLobby();
+    return json({success:true,state:privateView(next,username,username==="莫拉咕"),version:st.version,updatedAt:st.updated_at});
+  }catch(e){
+    const msg=errorMessage(e);
+    const map:any={ROOM_NOT_FOUND:404,PLAYER_NOT_IN_ROOM:403,SESSION_INVALID:403,NOT_YOUR_TURN:409,ROOM_VERSION_CONFLICT:409,ROOM_FULL:409,NOT_HOST:403,NOT_ENOUGH_PLAYERS:409,NOT_ADMIN:403,MINIMUM_RAISE:400};
+    return json({success:false,error:msg},map[msg]||400);
+  }
+});
