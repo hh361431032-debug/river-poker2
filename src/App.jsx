@@ -71,7 +71,7 @@ function RoomController({code,username,avatar,initialState=null,initialPlayerTok
   useEffect(()=>{
     if(!room||room.hostName!==username||room.stage==="handover"||room.stage==="waiting"||!room.turnStartedAt||room.turnIndex==null)return;
     const startedAt=room.turnStartedAt,turnIndex=room.turnIndex,stage=room.stage,handNumber=room.handNumber,ms=(room.turnSeconds||30)*1000-(Date.now()-startedAt);
-    const expire=()=>serverAction("fold");
+    const expire=()=>serverAction("tick");
     if(ms<=0){const t=setTimeout(expire,100);return()=>clearTimeout(t);}
     const t=setTimeout(expire,ms+100);
     return()=>clearTimeout(t);
