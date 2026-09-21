@@ -112,6 +112,41 @@ async function normalizeRoomAvatars(room:any){
   }
 }
 
+function repairLegacyState(room:any){
+  if(!room?.state||room.state.status!=="playing"||room.state.stage==="handover")return room;
+  const next=structuredClone(room.state);
+  let changed=false;
+
+  // Older versions could leave pot/currentBet/turnIndex inconsistent with
+  // the player records. Repair only derived fields so the current hand can
+  // continue instead of every subsequent action failing with INVALID_ROOM_STATE.
+  const contributionSum=next.players.reduce((sum:number,p:any)=>sum+(Number(p.totalContributed)||0),0);
+  if(next.pot!==contributionSum){next.pot=contributionSum;changed=true;}
+
+  const live=next.players.filter((p:any)=>p.inHand&&!p.folded);
+  const maxBet=Math.max(0,...live.map((p:any)=>Number(p.bet)||0));
+  if(next.currentBet!==maxBet){next.currentBet=maxBet;changed=true;}
+
+  const turnValid=Number.isInteger(next.turnIndex)
+    && next.turnIndex>=0
+    && next.turnIndex<next.players.length
+    && next.players[next.turnIndex]?.inHand
+    && !next.players[next.turnIndex]?.folded
+    && !next.players[next.turnIndex]?.allIn;
+  if(!turnValid){
+    const fallback=next.players.findIndex((p:any)=>p.inHand&&!p.folded&&!p.allIn&&(!p.hasActed||p.bet<next.currentBet));
+    const anyLive=next.players.findIndex((p:any)=>p.inHand&&!p.folded&&!p.allIn);
+    const replacement=fallback>=0?fallback:anyLive;
+    if(replacement>=0){next.turnIndex=replacement;changed=true;}
+  }
+
+  if(!changed)return room;
+  const st=writeRoom(room.code,next,room.version,room.updated_at);
+  return st.then((saved:any)=>({
+    code:room.code,state:next,version:saved.version,updated_at:saved.updated_at
+  }));
+}
+
 function playerFor(room:any,username:string,playerToken:string){
   const p=room.state.players.find((x:any)=>x.name===username);
   if(!p||!playerToken||p.sessionToken!==playerToken)throw new Error("SESSION_INVALID");
@@ -192,6 +227,7 @@ Deno.serve(async(req)=>{
     let room=await readRoom(code);
     timing.readMs=Math.round((performance.now()-readStarted)*100)/100;
     room=await normalizeRoomAvatars(room);
+    room=await repairLegacyState(room);
     if(action==="delete_room"){
       if(username!=="莫拉咕")throw new Error("NOT_ADMIN");
       await db.from("poker_rooms").delete().eq("code",code);publishLobby();
