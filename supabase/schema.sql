@@ -17,6 +17,7 @@ create table if not exists public.poker_rooms (
   player_count integer not null default 1,
   status text not null default 'waiting',
   state jsonb not null,
+  version bigint not null default 0,
   updated_at timestamptz not null default now()
 );
 
@@ -29,6 +30,7 @@ create table if not exists public.poker_messages (
 );
 
 alter table public.poker_users add column if not exists avatar_url text;
+alter table public.poker_rooms add column if not exists version bigint not null default 0;
 alter table public.poker_users add column if not exists dealer_image_url text;
 
 create index if not exists poker_rooms_updated_at_idx on public.poker_rooms(updated_at desc);
