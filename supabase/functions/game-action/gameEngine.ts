@@ -184,17 +184,27 @@ export function throwItem(room:any,fromName:string,targetName:string,itemKey:str
   return r;
 }
 export function kickPlayer(room:any,hostName:string,targetName:string){
-  const r=clone(room);
-  if(r.hostName!==hostName||hostName===targetName)throw new Error("NOT_HOST");
-  const p=r.players.find((x:any)=>x.name===targetName);if(!p)throw new Error("PLAYER_NOT_FOUND");
-  if(r.status==="playing"&&p.inHand&&!p.folded){p.folded=true;p.hasActed=true;p.kicked=true;r.log.push(`${targetName} 被房主踢出，本局按弃牌处理`);}
-  else r.players=r.players.filter((x:any)=>x.name!==targetName);
-  return r;
+  if(room.hostName!==hostName||hostName===targetName)throw new Error("NOT_HOST");
+  const target=room.players.find((x:any)=>x.name===targetName);if(!target)throw new Error("PLAYER_NOT_FOUND");
+  if(room.status==="playing"&&target.inHand&&!target.folded){
+    const r=target.name===room.players[room.turnIndex]?.name?applyAction(room,targetName,"fold"):clone(room);
+    const p=r.players.find((x:any)=>x.name===targetName);
+    if(p){p.kicked=true;r.log.push(`${targetName} 被房主踢出，本局按弃牌处理`);}
+    return r;
+  }
+  const r=clone(room);r.players=r.players.filter((x:any)=>x.name!==targetName);return r;
 }
 export function leaveRoom(room:any,name:string){
-  const r=clone(room);r.players=r.players.filter((p:any)=>p.name!==name);
+  let r=clone(room);
+  const leaving=r.players.find((p:any)=>p.name===name);if(!leaving)throw new Error("PLAYER_NOT_IN_ROOM");
+  if(r.status==="playing"&&leaving.inHand&&!leaving.folded){
+    if(leaving.name===r.players[r.turnIndex]?.name)r=applyAction(r,name,"fold");
+    else {const p=r.players.find((x:any)=>x.name===name);p.folded=true;p.hasActed=true;}
+  }
+  r.players=r.players.filter((p:any)=>p.name!==name);
   if(!r.players.length)return null;
   if(r.hostName===name)r.hostName=r.players[0].name;
+  if(r.status==="playing"&&r.players.filter((p:any)=>p.inHand&&!p.folded).length<=1)awardSingle(r);
   return r;
 }
 export function publicView(room:any,viewer="",admin=false){
