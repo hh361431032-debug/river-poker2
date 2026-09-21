@@ -18,7 +18,7 @@ export async function gameAction(payload) {
       clientMs,
       ...data.timing,
       edgeRegion: data.edgeRegion,
-    });
+    }));
   } else {
     console.info("[河畔牌局] action timing", JSON.stringify({
       action: payload?.action,
