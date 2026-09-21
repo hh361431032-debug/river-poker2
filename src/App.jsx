@@ -6,8 +6,8 @@ import AuthScreen from "./components/AuthScreen";
 import Lobby from "./components/Lobby";
 import GameTable from "./components/PokerTable";
 
-function RoomController({code,username,avatar,onAvatarChange,onLeaveLobby}){
-  const [room,setRoom]=useState(null), busy=useRef(false), roomJsonRef=useRef(""), roomUpdatedAtRef=useRef(null), playerTokenRef=useRef("");
+function RoomController({code,username,avatar,initialState=null,initialPlayerToken="",onAvatarChange,onLeaveLobby}){
+  const [room,setRoom]=useState(initialState), busy=useRef(false), roomJsonRef=useRef(""), roomUpdatedAtRef=useRef(initialState?JSON.stringify(initialState):""), roomUpdatedAtRef=useRef(null), playerTokenRef=useRef(initialPlayerToken||"");
   const applyServerResult=useCallback((res)=>{
     if(!res?.state)return false;
     const json=JSON.stringify(res.state);
@@ -29,11 +29,11 @@ function RoomController({code,username,avatar,onAvatarChange,onLeaveLobby}){
     }
   },[code,username,avatar,onLeaveLobby,applyServerResult]);
   useEffect(()=>{
-    load();
+    if(!initialState)load();
     const channel=supabase.channel(`poker-room-${code}`).on("postgres_changes",{event:"*",schema:"public",table:"poker_rooms",filter:`code=eq.${code}`},load).subscribe();
     const fallback=setInterval(load,5000);
     return()=>{clearInterval(fallback);supabase.removeChannel(channel);};
-  },[load,code]);
+  },[load,code,initialState]);
   const serverAction=useCallback(async(action,extra={})=>{
     if(busy.current)return false;
     busy.current=true;
@@ -72,6 +72,6 @@ function RoomController({code,username,avatar,onAvatarChange,onLeaveLobby}){
   />;
 }
 
-export default function App(){const [username,setUsername]=useState(null),[avatar,setAvatar]=useState(null),[roomCode,setRoomCode]=useState(null),[checking,setChecking]=useState(true);useEffect(()=>{(async()=>{const res=await storage.get("poker:session");if(res?.value){setUsername(res.value);try{const profile=await storage.getUserProfile(res.value);setAvatar(profile?.avatarUrl||null);}catch{setAvatar(null);}}setChecking(false);})();},[]);const login=async (u,avatarOverride=null)=>{setUsername(u);try{const profile=await storage.getUserProfile(u);setAvatar(avatarOverride || profile?.avatarUrl || null);}catch{setAvatar(avatarOverride || null);}await storage.set("poker:session",u);};const logout=async()=>{setUsername(null);setAvatar(null);setRoomCode(null);await storage.delete("poker:session");};useEffect(()=>{const code=new URLSearchParams(location.search).get("room");if(username&&code)setRoomCode(code.trim().toUpperCase());},[username]);if(checking)return <div className="page loading">正在进入河畔牌局…</div>;const saveAvatar=async data=>{await storage.setUserAvatar(username,data);setAvatar(data);};return <div className="app">{!username?<AuthScreen onLogin={login}/>:roomCode?<RoomController code={roomCode} username={username} avatar={avatar} onAvatarChange={saveAvatar} onLeaveLobby={()=>setRoomCode(null)}/>:<Lobby username={username} avatar={avatar} onAvatarChange={saveAvatar} onEnterRoom={setRoomCode} onLogout={logout}/>}</div>;}
+export default function App(){const [username,setUsername]=useState(null),[avatar,setAvatar]=useState(null),[roomCode,setRoomCode]=useState(null),[roomEntry,setRoomEntry]=useState(null),[checking,setChecking]=useState(true);useEffect(()=>{(async()=>{const res=await storage.get("poker:session");if(res?.value){setUsername(res.value);try{const profile=await storage.getUserProfile(res.value);setAvatar(profile?.avatarUrl||null);}catch{setAvatar(null);}}setChecking(false);})();},[]);const login=async (u,avatarOverride=null)=>{setUsername(u);try{const profile=await storage.getUserProfile(u);setAvatar(avatarOverride || profile?.avatarUrl || null);}catch{setAvatar(avatarOverride || null);}await storage.set("poker:session",u);};const logout=async()=>{setUsername(null);setAvatar(null);setRoomCode(null);setRoomEntry(null);await storage.delete("poker:session");};useEffect(()=>{const code=new URLSearchParams(location.search).get("room");if(username&&code){setRoomCode(code.trim().toUpperCase());setRoomEntry(null);}},[username]);if(checking)return <div className="page loading">正在进入河畔牌局…</div>;const saveAvatar=async data=>{await storage.setUserAvatar(username,data);setAvatar(data);};return <div className="app">{!username?<AuthScreen onLogin={login}/>:roomCode?<RoomController code={roomCode} username={username} avatar={avatar} initialState={roomEntry?.state||null} initialPlayerToken={roomEntry?.playerToken||""} onAvatarChange={saveAvatar} onLeaveLobby={()=>{setRoomCode(null);setRoomEntry(null);}}/>:<Lobby username={username} avatar={avatar} onAvatarChange={saveAvatar} onEnterRoom={(code,state,playerToken)=>{setRoomCode(code);setRoomEntry({state,playerToken});}} onLogout={logout}/>}</div>;}
 const ADMIN_USERNAME = "莫拉咕";
 const ADMIN_PASSWORD = "1234";
