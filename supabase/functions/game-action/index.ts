@@ -136,7 +136,8 @@ Deno.serve(async(req)=>{
       return json({success:true,code:roomCode,playerToken:sessionToken,state:privateView(room,username,username==="莫拉咕"),version:1,updatedAt});
     }
     if(action==="get_room"){
-      const room=await readRoom(code);
+      let room=await readRoom(code);
+      room=await normalizeRoomAvatars(room);
       let changed=false;
       let p=room.state.players.find((x:any)=>x.name===username);
       if(p&&!p.sessionToken){p.sessionToken=token();changed=true;}
@@ -166,13 +167,15 @@ Deno.serve(async(req)=>{
       if(p)return json({success:true,state:privateView(room.state,username,username==="莫拉咕"),version:room.version,updatedAt:room.updated_at,playerToken:p.sessionToken});
       if(room.state.players.length>=8)throw new Error("ROOM_FULL");
       const chips=Number(room.state.startingChips)||1000;
-      p={name:username,avatar:body.avatar||null,chips,cards:[],folded:false,allIn:false,bet:0,totalContributed:0,hasActed:false,inHand:false,waitingForNext:room.state.status==="playing",kicked:false,sessionToken:token()};
+      const avatar=await uploadDataUrl(String(body.avatar||""),"avatars",username.replace(/[^a-zA-Z0-9_-]/g,"_").slice(0,24)||"player");
+      p={name:username,avatar,chips,cards:[],folded:false,allIn:false,bet:0,totalContributed:0,hasActed:false,inHand:false,waitingForNext:room.state.status==="playing",kicked:false,sessionToken:token()};
       const next=structuredClone(room.state);next.players.push(p);
       const st=await writeRoom(code,next,room.version,room.updated_at);
       publish(code,next,st.version,st.updated_at);publishLobby();
       return json({success:true,state:privateView(next,username,username==="莫拉咕"),version:st.version,updatedAt:st.updated_at,playerToken:p.sessionToken});
     }
-    const room=await readRoom(code);
+    let room=await readRoom(code);
+    room=await normalizeRoomAvatars(room);
     if(action==="delete_room"){
       if(username!=="莫拉咕")throw new Error("NOT_ADMIN");
       await db.from("poker_rooms").delete().eq("code",code);publishLobby();
