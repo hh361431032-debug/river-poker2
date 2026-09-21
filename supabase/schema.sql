@@ -58,6 +58,7 @@ alter table public.poker_rooms add constraint poker_rooms_version_check check (v
 create or replace function public.enforce_poker_room_version()
 returns trigger
 language plpgsql
+set search_path = ''
 as $
 begin
   if TG_OP = 'UPDATE' then
