@@ -190,7 +190,7 @@ export const storage = {
     return { success: true };
   },
 
-  async set(key, value) {
+  async set(key, value, options = {}) {
     if (key === "poker:session") {
       localStorage.setItem(localKey(key), value);
       notify();
@@ -243,20 +243,45 @@ export const storage = {
       const code = key.replace("poker:room:", "");
       const state = JSON.parse(value);
       const meta = roomMetaFromState(state);
+      const expectedUpdatedAt = options.expectedUpdatedAt || null;
 
-      const { error } = await supabase
+      if (!expectedUpdatedAt) {
+        const { data: existing, error: readError } = await supabase
+          .from("poker_rooms")
+          .select("code")
+          .eq("code", code)
+          .maybeSingle();
+
+        if (readError) throw readError;
+
+        if (existing) {
+          throw new Error("ROOM_VERSION_REQUIRED");
+        }
+
+        const { error } = await supabase
+          .from("poker_rooms")
+          .insert({ ...meta, state });
+
+        if (error) throw error;
+        return { success: true };
+      }
+
+      const nextUpdatedAt = new Date().toISOString();
+      const { data, error } = await supabase
         .from("poker_rooms")
-        .upsert(
-          {
-            ...meta,
-            state,
-          },
-          { onConflict: "code" }
-        );
+        .update({
+          ...meta,
+          state,
+          updated_at: nextUpdatedAt,
+        })
+        .eq("code", code)
+        .eq("updated_at", expectedUpdatedAt)
+        .select("updated_at")
+        .maybeSingle();
 
       if (error) throw error;
-
-      return { success: true };
+      if (!data) return { success: false, conflict: true };
+      return { success: true, updatedAt: data.updated_at };
     }
 
     return { success: true };
