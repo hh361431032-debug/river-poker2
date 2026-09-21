@@ -126,13 +126,15 @@ export const storage = {
     let avatarUrl = data.avatar_url || null;
     if (avatarUrl?.startsWith("data:image/")) {
       avatarUrl = await uploadDataUrl(avatarUrl, "avatars", username);
-      const { error: migrateError } = await supabase.from("poker_users").update({ avatar_url: avatarUrl }).eq("username", username);
+      const { error: migrateError } = await supabase
+        .from("poker_users")
+        .update({ avatar_url: avatarUrl })
+        .eq("username", username);
       if (migrateError) throw migrateError;
     }
     return {
       username: data.username,
       avatarUrl,
-    };
     };
   },
 
@@ -179,10 +181,20 @@ export const storage = {
       .maybeSingle();
 
     if (error) throw error;
-    let imageUrl = data?.dealer_image_url || null;\n    if (imageUrl?.startsWith("data:image/")) {\n      imageUrl = await uploadDataUrl(imageUrl, "dealer", "luna");\n      const { error: migrateError } = await supabase.from("poker_users").update({ dealer_image_url: imageUrl }).eq("username", "莫拉咕");\n      if (migrateError) throw migrateError;\n    }\n    return imageUrl;
+    let imageUrl = data?.dealer_image_url || null;
+    if (imageUrl?.startsWith("data:image/")) {
+      imageUrl = await uploadDataUrl(imageUrl, "dealer", "luna");
+      const { error: migrateError } = await supabase
+        .from("poker_users")
+        .update({ dealer_image_url: imageUrl })
+        .eq("username", "莫拉咕");
+      if (migrateError) throw migrateError;
+    }
+    return imageUrl;
   },
 
-  async setDealerImage(imageUrl) {\n    imageUrl = await uploadDataUrl(imageUrl, "dealer", "luna");
+  async setDealerImage(imageUrl) {
+    imageUrl = await uploadDataUrl(imageUrl, "dealer", "luna");
     const { data: old, error: readError } = await supabase
       .from("poker_users")
       .select("username")
