@@ -116,7 +116,7 @@ export const storage = {
   async getUser(username) {
     const { data, error } = await supabase
       .from("poker_users")
-      .select("username,password_hash,chips,avatar_url")
+      .select("username,password_hash,avatar_url")
       .eq("username", username)
       .maybeSingle();
 
