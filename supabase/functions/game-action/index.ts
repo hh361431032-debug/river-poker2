@@ -1,10 +1,12 @@
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createClient } from "npm:@supabase/supabase-js@2.57.0";
 import { applyAction, kickPlayer, leaveRoom, privateView, publicView, startHand, throwItem, validateRoomState } from "./gameEngine.ts";
 import { corsHeaders, json } from "./cors.ts";
 
 const supabaseUrl=Deno.env.get("SUPABASE_URL")!;
 const serviceKey=Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const db=createClient(supabaseUrl,serviceKey,{auth:{persistSession:false}});
+const BOOT_ID=crypto.randomUUID();
+const BOOT_AT=Date.now();
 
 function token(){return crypto.randomUUID()+crypto.randomUUID();}
 function errorMessage(e:any){return e?.message||"操作失败";}
@@ -155,7 +157,7 @@ function playerFor(room:any,username:string,playerToken:string){
 Deno.serve(async(req)=>{
   if(req.method==="OPTIONS")return new Response("ok",{headers:corsHeaders});
   const requestStarted=performance.now();
-  const timing:any={};
+  const timing:any={bootId:BOOT_ID,bootAgeMs:Date.now()-BOOT_AT};
   try{
     const parseStarted=performance.now();
     const body=await req.json();
