@@ -185,6 +185,26 @@ Deno.test("multiple short all-ins cumulatively reopen betting", () => {
   if (reopened.currentBet!==300) throw new Error("A should be able to make the full minimum raise");
 });
 
+Deno.test("non-all-in raise below the minimum is rejected", () => {
+  const r={
+    players:[
+      player("A",20,100,{bet:20}),
+      player("B",20,100,{bet:20}),
+    ],
+    community:[],
+    pot:40,
+    currentBet:20,
+    minRaise:20,
+    dealerIndex:0,
+    stage:"preflop",
+    status:"playing",
+    turnIndex:0,
+    turnStartedAt:Date.now(),
+    log:[],
+  };
+  assertThrows(()=>applyAction(r,"A","raise",30),"MINIMUM_RAISE");
+});
+
 Deno.test("short all-in below the minimum raise remains legal", () => {
   const r={
     players:[
