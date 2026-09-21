@@ -84,7 +84,7 @@ function nextSeat(room:any, from:number, fn:(p:any)=>boolean) {
 function awardSingle(r:any){
   const w=r.players.find((p:any)=>p.inHand&&!p.folded);
   if(w){w.chips+=r.pot;r.log.push(`${w.name} 赢得彩池 ${r.pot} 筹码（其他玩家弃牌）`);}
-  r.pot=0;r.stage="handover";
+  r.pot=0;r.currentBet=0;r.stage="handover";
 }
 function distributePots(r:any){
   const contributors=r.players.filter((p:any)=>p.totalContributed>0);
@@ -109,7 +109,11 @@ function distributePots(r:any){
 function contestants(r:any){return r.players.filter((p:any)=>p.inHand&&!p.folded&&!p.allIn);}
 function dealCommunity(r:any,n:number){r.deck.pop();for(let i=0;i<n;i++)r.community.push(r.deck.pop());}
 function resetBets(r:any){
-  r.players.forEach((p:any)=>{p.bet=0;if(p.inHand&&!p.folded&&!p.allIn)p.hasActed=false;});
+  r.players.forEach((p:any)=>{
+    p.bet=0;
+    p.lastActedBet=0;
+    if(p.inHand&&!p.folded&&!p.allIn)p.hasActed=false;
+  });
   r.currentBet=0;r.minRaise=BIG_BLIND;
 }
 function advanceStage(r:any){
@@ -128,7 +132,7 @@ export function startHand(room:any){
   const r=clone(room);
   r.players=r.players.filter((p:any)=>p.chips>0&&!p.kicked);
   if(r.players.length<2){r.stage="waiting";r.status="waiting";return r;}
-  r.players.forEach((p:any)=>Object.assign(p,{cards:[],folded:false,allIn:false,bet:0,totalContributed:0,hasActed:false,inHand:true,waitingForNext:false,kicked:false}));
+  r.players.forEach((p:any)=>Object.assign(p,{cards:[],folded:false,allIn:false,bet:0,totalContributed:0,hasActed:false,lastActedBet:0,inHand:true,waitingForNext:false,kicked:false}));
   r.deck=shuffle(freshDeck());r.community=[];r.pot=0;r.currentBet=0;r.minRaise=BIG_BLIND;
   r.log=[];r.handNumber=(r.handNumber||0)+1;r.status="playing";r.stage="preflop";
   r.turnStartedAt=Date.now();r.dealerIndex=r.dealerIndex==null?0:(r.dealerIndex+1)%r.players.length;
@@ -137,8 +141,11 @@ export function startHand(room:any){
   if(n===2){sb=r.dealerIndex;bb=(r.dealerIndex+1)%n;first=sb;}
   else{sb=nextSeat(r,r.dealerIndex,()=>true);bb=nextSeat(r,sb,()=>true);first=nextSeat(r,bb,()=>true);}
   const blind=(idx:number,amount:number)=>{const p=r.players[idx],pay=Math.min(amount,p.chips);p.chips-=pay;p.bet+=pay;p.totalContributed+=pay;if(!p.chips)p.allIn=true;r.pot+=pay;};
-  blind(sb,SMALL_BLIND);blind(bb,BIG_BLIND);r.currentBet=BIG_BLIND;r.turnIndex=first;r.turnStartedAt=Date.now();
+  blind(sb,SMALL_BLIND);blind(bb,BIG_BLIND);r.currentBet=BIG_BLIND;
+  r.turnIndex=nextSeat(r,(first+r.players.length-1)%r.players.length,(p:any)=>p.inHand&&!p.folded&&!p.allIn);
+  r.turnStartedAt=Date.now();
   r.log.push(`第 ${r.handNumber} 局开始，庄家：${r.players[r.dealerIndex].name}`);
+  if(r.turnIndex<0)return advanceStage(r);
   return r;
 }
 export function applyAction(room:any,name:string,action:string,amount?:number){
@@ -147,23 +154,28 @@ export function applyAction(room:any,name:string,action:string,amount?:number){
   const src=room.players[idx];
   if(!src.inHand||src.folded||src.allIn) throw new Error("INVALID_PLAYER_STATE");
   const r=clone(room),p=r.players[idx];
-  if(action==="fold"){p.folded=true;p.hasActed=true;r.log.push(`${p.name} 弃牌`);}
-  else if(action==="check"){if(r.currentBet>p.bet)throw new Error("CANNOT_CHECK");p.hasActed=true;r.log.push(`${p.name} 过牌`);}
+  if(action==="fold"){p.folded=true;p.hasActed=true;p.lastActedBet=p.bet;r.log.push(`${p.name} 弃牌`);}
+  else if(action==="check"){if(r.currentBet>p.bet)throw new Error("CANNOT_CHECK");p.hasActed=true;p.lastActedBet=p.bet;r.log.push(`${p.name} 过牌`);}
   else if(action==="call"){
     const call=Math.min(r.currentBet-p.bet,p.chips);
     if(call<=0)throw new Error("NOTHING_TO_CALL");
-    p.chips-=call;p.bet+=call;p.totalContributed+=call;r.pot+=call;if(!p.chips)p.allIn=true;p.hasActed=true;r.log.push(`${p.name} 跟注 ${call}`);
+    p.chips-=call;p.bet+=call;p.totalContributed+=call;r.pot+=call;if(!p.chips)p.allIn=true;p.hasActed=true;p.lastActedBet=p.bet;r.log.push(`${p.name} 跟注 ${call}`);
   } else if(action==="raise"){
     const maxRaiseTo=p.bet+p.chips;
     const raiseTo=Math.min(Number(amount)||0,maxRaiseTo),delta=raiseTo-p.bet;
     const isAllIn=raiseTo===maxRaiseTo;
     if(delta<=0||raiseTo<=r.currentBet)throw new Error("INVALID_RAISE");
-    const minimumRaiseTo=r.currentBet+r.minRaise;
+    const previousMinRaise=r.minRaise;
+    const minimumRaiseTo=r.currentBet+previousMinRaise;
     if(raiseTo<minimumRaiseTo&&!isAllIn)throw new Error("MINIMUM_RAISE");
     p.chips-=delta;p.bet=raiseTo;p.totalContributed+=delta;r.pot+=delta;if(!p.chips)p.allIn=true;
-    const size=raiseTo-r.currentBet;r.currentBet=raiseTo;if(size>=r.minRaise)r.minRaise=size;
-    r.players.forEach((pl:any,i:number)=>{if(i!==idx&&pl.inHand&&!pl.folded&&!pl.allIn)pl.hasActed=false;});
-    p.hasActed=true;r.log.push(`${p.name} 加注到 ${raiseTo}`);
+    const size=raiseTo-r.currentBet;r.currentBet=raiseTo;if(size>=previousMinRaise)r.minRaise=size;
+    r.players.forEach((pl:any,i:number)=>{
+      if(i===idx||!pl.inHand||pl.folded||pl.allIn||!pl.hasActed)return;
+      const facedSinceLastAction=r.currentBet-(Number(pl.lastActedBet)||0);
+      if(facedSinceLastAction>=previousMinRaise)pl.hasActed=false;
+    });
+    p.hasActed=true;p.lastActedBet=p.bet;r.log.push(`${p.name} 加注到 ${raiseTo}`);
   } else throw new Error("UNKNOWN_ACTION");
   r.log=r.log.slice(-30);
   const remaining=r.players.filter((pl:any)=>pl.inHand&&!pl.folded);
@@ -244,7 +256,7 @@ export function validateRoomState(room:any){
   if(room.status==="playing"){
     const live=room.players.filter((p:any)=>p.inHand&&!p.folded);
     if(live.length<1||room.turnIndex==null||room.turnIndex<0||room.turnIndex>=room.players.length)throw new Error("INVALID_ROOM_STATE");
-    const expectedPot=room.players.reduce((sum:number,p:any)=>sum+p.bet,0);
+    const expectedPot=room.players.reduce((sum:number,p:any)=>sum+p.totalContributed,0);
     if(expectedPot!==room.pot)throw new Error("INVALID_ROOM_STATE");
     const maxBet=Math.max(0,...live.map((p:any)=>p.bet));
     if(room.currentBet!==maxBet)throw new Error("INVALID_ROOM_STATE");
