@@ -7,7 +7,7 @@ import Lobby from "./components/Lobby";
 import GameTable from "./components/PokerTable";
 
 function RoomController({code,username,avatar,initialState=null,initialPlayerToken="",onAvatarChange,onLeaveLobby}){
-  const [room,setRoom]=useState(initialState), busy=useRef(false), roomJsonRef=useRef(""), roomUpdatedAtRef=useRef(initialState?JSON.stringify(initialState):""), roomUpdatedAtRef=useRef(null), playerTokenRef=useRef(initialPlayerToken||"");
+  const [room,setRoom]=useState(initialState), busy=useRef(false), roomJsonRef=useRef(initialState?JSON.stringify(initialState):""), roomUpdatedAtRef=useRef(null), playerTokenRef=useRef(initialPlayerToken||"");
   const applyServerResult=useCallback((res)=>{
     if(!res?.state)return false;
     const json=JSON.stringify(res.state);
