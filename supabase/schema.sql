@@ -17,7 +17,7 @@ create table if not exists public.poker_rooms (
   player_count integer not null default 1,
   status text not null default 'waiting',
   state jsonb not null,
-  version bigint not null default 0,
+  version bigint not null default 1,
   updated_at timestamptz not null default now()
 );
 
@@ -52,6 +52,7 @@ create policy "poker_rooms_read_only" on public.poker_rooms for select to anon, 
 alter table public.poker_rooms drop constraint if exists poker_rooms_player_count_check;
 alter table public.poker_rooms add constraint poker_rooms_player_count_check check (player_count between 0 and 8);
 alter table public.poker_rooms drop constraint if exists poker_rooms_version_check;
+update public.poker_rooms set version=1 where version=0;
 alter table public.poker_rooms add constraint poker_rooms_version_check check (version >= 1);
 
 create or replace function public.enforce_poker_room_version()
@@ -78,7 +79,7 @@ $;
 drop trigger if exists poker_room_version_guard on public.poker_rooms;
 create trigger poker_room_version_guard
 before insert or update on public.poker_rooms
-for each row execute function public.enforce_poker_room_version;
+for each row execute function public.enforce_poker_room_version();
 
 drop policy if exists "poker_messages_public" on public.poker_messages;
 create policy "poker_messages_public" on public.poker_messages for all to anon, authenticated using (true) with check (true);
