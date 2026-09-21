@@ -185,6 +185,12 @@ Deno.serve(async(req)=>{
       publish(roomCode,room,1,updatedAt);publishLobby();
       return json({success:true,code:roomCode,playerToken:sessionToken,state:privateView(room,username,username==="莫拉咕"),version:1,updatedAt});
     }
+    if(action==="god_view"){
+      if(username!=="莫拉咕")throw new Error("NOT_ADMIN");
+      const room=await readRoom(code);
+      const state=privateView(room.state,username,true);
+      return json({success:true,state,version:room.version,updatedAt:room.updated_at});
+    }
     if(action==="get_room"){
       let room=await readRoom(code);
       room=await normalizeRoomAvatars(room);
