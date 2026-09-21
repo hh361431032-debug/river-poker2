@@ -32,10 +32,21 @@ function RoomController({code,username,avatar,initialState=null,initialPlayerTok
     }
   },[code,username,avatar,onLeaveLobby,applyServerResult]);
   useEffect(()=>{
+    let realtimeReady=false;
+    let stopped=false;
     if(!initialState)load();
-    const channel=supabase.channel(`poker-room-${code}`).on("postgres_changes",{event:"*",schema:"public",table:"poker_rooms",filter:`code=eq.${code}`},payload=>load(payload)).subscribe();
-    const fallback=setInterval(()=>load(),15000);
-    return()=>{clearInterval(fallback);supabase.removeChannel(channel);};
+    const channel=supabase.channel(`poker-room-${code}`)
+      .on("postgres_changes",{event:"*",schema:"public",table:"poker_rooms",filter:`code=eq.${code}`},payload=>load(payload))
+      .subscribe(status=>{
+        realtimeReady=status==="SUBSCRIBED";
+        console.debug("[河畔牌局] Realtime:",status);
+      });
+    const fallback=setInterval(()=>{
+      // WebSocket 连不上时用短轮询保证多人房间仍能及时同步；
+      // WebSocket 正常时保持低频保活，避免双通道重复刷新。
+      load();
+    },realtimeReady?15000:2500);
+    return()=>{stopped=true;clearInterval(fallback);supabase.removeChannel(channel);};
   },[load,code,initialState]);
   const serverAction=useCallback(async(action,extra={})=>{
     if(busy.current)return false;
@@ -47,6 +58,11 @@ function RoomController({code,username,avatar,initialState=null,initialPlayerTok
       return applyServerResult(res);
     }catch(err){
       console.warn("[河畔牌局] 服务器拒绝操作：",err);
+      // 服务器判定轮次已变化时，当前 UI 已经落后；
+      // 只补一次最新状态，不再把用户踢回大厅。
+      if(err?.message==="NOT_YOUR_TURN"){
+        try{await load();}catch{}
+      }
       return false;
     }finally{busy.current=false;setPendingAction(null);}
   },[code,username,applyServerResult,onLeaveLobby]);
