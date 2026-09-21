@@ -24,7 +24,7 @@ export async function gameAction(payload) {
       action: payload?.action,
       clientMs,
       serverTiming: "missing",
-    });
+    }));
   }
 
   if (error) {
