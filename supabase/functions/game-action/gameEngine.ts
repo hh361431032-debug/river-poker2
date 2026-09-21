@@ -284,9 +284,26 @@ export function leaveRoom(room:any,name:string){
     if(leaving.name===r.players[r.turnIndex]?.name)r=applyAction(r,name,"fold");
     else {const p=r.players.find((x:any)=>x.name===name);p.folded=true;p.hasActed=true;}
   }
+  // Removing a seat before turnIndex shifts every later index.
+  // Preserve the current turn by player name before filtering.
+  const nextTurnName=r.status==="playing"&&r.stage!=="handover"
+    ? r.players[r.turnIndex]?.name
+    : null;
+
   r.players=r.players.filter((p:any)=>p.name!==name);
   if(!r.players.length)return null;
   if(r.hostName===name)r.hostName=r.players[0].name;
+
+  if(r.status==="playing"&&r.stage!=="handover"){
+    let nextIndex=nextTurnName
+      ? r.players.findIndex((p:any)=>p.name===nextTurnName)
+      : -1;
+    if(nextIndex<0){
+      nextIndex=r.players.findIndex((p:any)=>p.inHand&&!p.folded&&!p.allIn);
+    }
+    if(nextIndex>=0)r.turnIndex=nextIndex;
+  }
+
   if(r.status==="playing"&&r.players.filter((p:any)=>p.inHand&&!p.folded).length<=1)awardSingle(r);
   return r;
 }
