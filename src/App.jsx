@@ -58,7 +58,8 @@ function validateRoomState(room){
     if(room.stage!=="handover"){
       const betTotal=players.reduce((sum,p)=>sum+p.bet,0);
       if(room.pot!==betTotal)return{ok:false,error:`底池与玩家下注不一致：pot=${room.pot}, bets=${betTotal}`};
-      const allBets=players.filter(p=>p.inHand&&!p.folded).map(p=>p.bet);\n      if(allBets.length&&room.currentBet!==Math.max(...allBets))return{ok:false,error:"currentBet 与本街最高下注不一致"};
+      const allBets=players.filter(p=>p.inHand&&!p.folded).map(p=>p.bet);
+      if(allBets.length&&room.currentBet!==Math.max(...allBets))return{ok:false,error:"currentBet 与本街最高下注不一致"};
     }
   }else if(room.pot!==0)return{ok:false,error:"非进行中牌局的底池应为 0"};
   const seen=new Set();
