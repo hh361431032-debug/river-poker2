@@ -1,0 +1,20 @@
+name: game-engine
+
+on:
+  push:
+    paths:
+      - "supabase/functions/game-action/**"
+  pull_request:
+    paths:
+      - "supabase/functions/game-action/**"
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      - name: Run game engine tests
+        run: deno test supabase/functions/game-action/gameEngine.test.ts
