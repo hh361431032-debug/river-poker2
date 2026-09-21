@@ -90,7 +90,7 @@ Deno.test("multiple side pots: each layer is limited to players who reached it",
     player("A",50,0,{cards:[{r:2,s:"h"},{r:3,s:"h"}]}),
     player("B",100,0,{cards:[{r:14,s:"h"},{r:14,s:"d"}]}),
     player("C",150,0,{cards:[{r:13,s:"h"},{r:12,s:"d"}]}),
-    player("D",150,0,{cards:[{r:11,s:"h"},{r:10,s:"d"}]}),
+    player("D",150,0,{cards:[{r:8,s:"h"},{r:7,s:"d"}]}),
   ]);
   const before=chipsTotal(r);
   const pots=buildPots(r);
@@ -182,7 +182,7 @@ Deno.test("multiple short all-ins cumulatively reopen betting", () => {
   const d=applyAction(c,"D","raise",200);
   const e=applyAction(d,"E","call");
   if (e.turnIndex!==0) throw new Error("action should return to A");
-  if (!e.players[0].hasActed) throw new Error("A should reopen after cumulative full raise");
+  if (e.players[0].hasActed) throw new Error("A was not reopened after cumulative full raise");
   const reopened=applyAction(e,"A","raise",300);
   if (reopened.currentBet!==300) throw new Error("A should be able to make the full minimum raise");
 });
