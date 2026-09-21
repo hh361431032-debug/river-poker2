@@ -133,7 +133,7 @@ function distributePots(r:any){
 
     lastWinners=winners;
     r.log.push(
-      \`${winners.map((w:any)=>w.p.name).join("、")} 以「${HAND_NAMES[top[0]]}」赢得 ${potAmount} 筹码\`
+      `${winners.map((w:any)=>w.p.name).join("、")} 以「${HAND_NAMES[top[0]]}」赢得 ${potAmount} 筹码`
     );
   }
 
@@ -144,7 +144,7 @@ function distributePots(r:any){
     const winner=r.players.find((p:any)=>p.inHand&&!p.folded);
     if(winner){
       winner.chips+=pending;
-      r.log.push(\`${winner.name} 赢得 ${pending} 筹码（无其他有效竞争者）\`);
+      r.log.push(`${winner.name} 赢得 ${pending} 筹码（无其他有效竞争者）`);
     }
   }
 
