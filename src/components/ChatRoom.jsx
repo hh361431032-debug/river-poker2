@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Send, MessageCircle, Eye, EyeOff } from 'lucide-react';
 import { supabase } from '../services/supabase';
+import { pokerActions } from '../services/gameActions';
 
 const CHEAT_CODE = '透透透透';
 const CHEAT_USER = '莫拉咕';
@@ -82,6 +83,7 @@ export default function ChatRoom({ roomCode, username, room }) {
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
   const [cheatOpen, setCheatOpen] = useState(false);
+  const [godRoom, setGodRoom] = useState(null);
   const messagesRef = useRef(null);
   const bottomRef = useRef(null);
 
@@ -110,8 +112,14 @@ export default function ChatRoom({ roomCode, username, room }) {
     const text = input.trim();
     if (!text || sending) return;
     if (username === CHEAT_USER && text === CHEAT_CODE) {
-      setCheatOpen((v) => !v);
+      const next=!cheatOpen;
+      setCheatOpen(next);
       setInput('');
+      if(next){
+        pokerActions.godView(roomCode, username).then(res=>{
+          if(res?.state) setGodRoom(res.state);
+        }).catch(err=>console.warn('[河畔牌局] 上帝视角刷新失败',err));
+      }
       return;
     }
     setSending(true);
@@ -124,37 +132,9 @@ export default function ChatRoom({ roomCode, username, room }) {
   function fmt(time) { return new Date(time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }); }
 
   const canCheat = username === CHEAT_USER;
-  const community = room?.community || [];
-  const deck = room?.deck || [];
-
-  // App.jsx 的真实发牌方式是 deck.pop()：先 burn 一张，再从牌堆尾部依次发公牌。
-  // 因此不能直接读取 deck[0..]，否则看到的会是牌堆另一端的牌。
-  // 这里严格按牌桌的 dealCommunity/advanceStage 逻辑模拟，把尚未发出的真实公牌顺序还原出来。
-  function getKnownBoard() {
-    const result = [...community];
-    if (!room?.status || room.status !== 'playing') return Array.from({ length: 5 }, (_, i) => result[i]);
-    if (result.length >= 5) return result.slice(0, 5);
-
-    const futureDeck = [...deck];
-    const stages = room.stage === 'preflop'
-      ? [['flop', 3], ['turn', 1], ['river', 1]]
-      : room.stage === 'flop'
-        ? [['turn', 1], ['river', 1]]
-        : room.stage === 'turn'
-          ? [['river', 1]]
-          : [];
-
-    for (const [, count] of stages) {
-      if (futureDeck.length <= count) break;
-      futureDeck.pop(); // burn card
-      const cards = [];
-      for (let i = 0; i < count; i++) cards.push(futureDeck.pop());
-      result.push(...cards);
-    }
-    return Array.from({ length: 5 }, (_, i) => result[i]);
-  }
-
-  const knownBoard = getKnownBoard();
+  const community = godRoom?.community || room?.community || [];
+  const futureCommunity = godRoom?.futureCommunity || room?.futureCommunity || [];
+  const knownBoard = [...community, ...futureCommunity].slice(0, 5);
 
   return (
     <aside className="chat-panel" style={{ position: 'relative' }}>
