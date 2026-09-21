@@ -86,65 +86,89 @@ function awardSingle(r:any){
   if(w){w.chips+=r.pot;r.log.push(`${w.name} 赢得彩池 ${r.pot} 筹码（其他玩家弃牌）`);}
   r.pot=0;r.currentBet=0;r.stage="handover";
 }
-function distributePots(r:any){
+export function buildPots(r:any){
   const contributors=r.players.filter((p:any)=>p.totalContributed>0);
   const levels=[...new Set(contributors.map((p:any)=>p.totalContributed))].sort((a,b)=>a-b);
   let prev=0;
+  return levels.map((level:any)=>{
+    const layerContributors=contributors.filter((p:any)=>p.totalContributed>=level);
+    const amount=(level-prev)*layerContributors.length;
+    prev=level;
+    return {
+      level,
+      amount,
+      contributors:layerContributors,
+      eligible:layerContributors.filter((p:any)=>!p.folded),
+    };
+  }).filter((pot:any)=>pot.amount>0);
+}
+
+function orderWinners(r:any,winners:any[]){
+  const n=r.players.length;
+  const dealer=Number.isInteger(r.dealerIndex)?r.dealerIndex:-1;
+  if(n<=0||dealer<0)return winners;
+  return [...winners].sort((a:any,b:any)=>{
+    const ai=r.players.indexOf(a.p),bi=r.players.indexOf(b.p);
+    const ad=(ai-dealer+n)%n,bd=(bi-dealer+n)%n;
+    return ad-bd;
+  });
+}
+
+function awardPot(r:any,amount:number,winners:any[]){
+  if(!winners.length||amount<=0)return;
+  const share=Math.floor(amount/winners.length);
+  const remainder=amount-share*winners.length;
+  const ordered=orderWinners(r,winners);
+  ordered.forEach((w:any,i:number)=>{
+    w.p.chips+=share+(i<remainder?1:0);
+  });
+}
+
+function distributePots(r:any){
+  const pots=buildPots(r);
   let pending=0;
   let lastWinners:any[]=[];
 
-  // Build each contribution layer from the bottom up. Folded players still
-  // contribute chips to the layer, but are never eligible to win it.
-  for(const level of levels){
-    const eligible=contributors.filter((p:any)=>p.totalContributed>=level);
-    const amount=(level-prev)*eligible.length;
-    prev=level;
-    if(amount<=0)continue;
-
-    const contenders=eligible.filter((p:any)=>!p.folded);
-    if(!contenders.length){
-      // A layer with no live contender is dead money. Keep it with the next
-      // lower contestable pot instead of silently deleting chips.
-      pending+=amount;
+  // Each contribution layer is a separate contestable pot. Folded players
+  // contribute to the amount but are never eligible to win it.
+  for(const pot of pots){
+    if(!pot.eligible.length){
+      // This layer contains only dead money. Keep it attached to the last
+      // contestable pot instead of silently deleting committed chips.
+      pending+=pot.amount;
       continue;
     }
 
-    if(pending>0 && lastWinners.length){
-      const share=Math.floor(pending/lastWinners.length);
-      const remainder=pending-share*lastWinners.length;
-      lastWinners.forEach((w:any,i:number)=>{w.p.chips+=share+(i<remainder?1:0);});
+    if(pending>0&&lastWinners.length){
+      awardPot(r,pending,lastWinners);
       pending=0;
     }
 
-    const potAmount=amount;
-    const scored=contenders.map((p:any)=>({
+    const scored=pot.eligible.map((p:any)=>({
       p,
       score:bestScore([...p.cards,...r.community])
-    })).sort((a:any,b:any)=>compareScore(b.score,a.score));
-
-    const top=scored[0].score;
+    }));
+    const top=scored.reduce((best:any,current:any)=>
+      !best||compareScore(current.score,best.score)>0?current:best,null as any).score;
     const winners=scored.filter((x:any)=>compareScore(x.score,top)===0);
-    const share=Math.floor(potAmount/winners.length);
-    const remainder=potAmount-share*winners.length;
 
-    winners.forEach((w:any,i:number)=>{
-      w.p.chips+=share+(i<remainder?1:0);
-    });
-
+    awardPot(r,pot.amount,winners);
     lastWinners=winners;
     r.log.push(
-      `${winners.map((w:any)=>w.p.name).join("、")} 以「${HAND_NAMES[top[0]]}」赢得 ${potAmount} 筹码`
+      `${winners.map((w:any)=>w.p.name).join("、")} 以「${HAND_NAMES[top[0]]}」赢得 ${pot.amount} 筹码`
     );
   }
 
-  // This should only be reachable for a malformed hand where all contribution
-  // layers had no live contender. The normal awardSingle path handles the
-  // one-live-player case before showdown.
+  // Normally there is always at least one contestable pot when this function
+  // runs. This fallback protects against malformed/legacy states.
   if(pending>0){
-    const winner=r.players.find((p:any)=>p.inHand&&!p.folded);
-    if(winner){
-      winner.chips+=pending;
-      r.log.push(`${winner.name} 赢得 ${pending} 筹码（无其他有效竞争者）`);
+    if(lastWinners.length)awardPot(r,pending,lastWinners);
+    else {
+      const winner=r.players.find((p:any)=>p.inHand&&!p.folded);
+      if(winner){
+        winner.chips+=pending;
+        r.log.push(`${winner.name} 赢得 ${pending} 筹码（无其他有效竞争者）`);
+      }
     }
   }
 
