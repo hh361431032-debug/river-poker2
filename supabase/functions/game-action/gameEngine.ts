@@ -309,6 +309,23 @@ export function leaveRoom(room:any,name:string){
 }
 export function publicView(room:any,viewer="",admin=false){
   const r=clone(room);
+  // 管理员（上帝模式）可以查看尚未发出的公共牌，但普通玩家绝不能拿到牌堆信息。
+  // 用当前牌堆顺序模拟“烧牌 + 发牌”，只暴露未来公共牌，不暴露剩余 deck。
+  if(admin&&r.status==="playing"&&r.stage!=="handover"&&Array.isArray(r.deck)){
+    const previewDeck=[...r.deck];
+    const future:any[]=[];
+    const dealPreview=(count:number)=>{
+      if(previewDeck.length>0)previewDeck.pop();
+      for(let i=0;i<count;i++){
+        const card=previewDeck.pop();
+        if(card)future.push(card);
+      }
+    };
+    if(r.stage==="preflop")dealPreview(3);
+    if(r.stage==="preflop"||r.stage==="flop")dealPreview(1);
+    if(r.stage==="preflop"||r.stage==="flop"||r.stage==="turn")dealPreview(1);
+    r.futureCommunity=future;
+  }
   delete r.deck;
   r.players=r.players.map((p:any)=>{
     const {sessionToken,...safe}=p;
