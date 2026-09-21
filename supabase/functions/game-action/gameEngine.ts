@@ -88,7 +88,7 @@ function awardSingle(r:any){
 }
 export function buildPots(r:any){
   const contributors=r.players.filter((p:any)=>p.totalContributed>0);
-  const levels=[...new Set(contributors.map((p:any)=>p.totalContributed))].sort((a:number,b:number)=>a-b);
+  const levels=Array.from(new Set<number>(contributors.map((p:any)=>p.totalContributed))).sort((a,b)=>a-b);
   let prev=0;
   return levels.map((level:any)=>{
     const layerContributors=contributors.filter((p:any)=>p.totalContributed>=level);
