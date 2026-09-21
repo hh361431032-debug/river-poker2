@@ -90,21 +90,62 @@ function distributePots(r:any){
   const contributors=r.players.filter((p:any)=>p.totalContributed>0);
   const levels=[...new Set(contributors.map((p:any)=>p.totalContributed))].sort((a,b)=>a-b);
   let prev=0;
+  let pending=0;
+  let awarded=0;
+
+  // Build each contribution layer from the bottom up. Folded players still
+  // contribute chips to the layer, but are never eligible to win it.
   for(const level of levels){
     const eligible=contributors.filter((p:any)=>p.totalContributed>=level);
-    const amount=(level-prev)*eligible.length;prev=level;
+    const amount=(level-prev)*eligible.length;
+    prev=level;
     if(amount<=0)continue;
+
     const contenders=eligible.filter((p:any)=>!p.folded);
-    if(!contenders.length)continue;
-    const scored=contenders.map((p:any)=>({p,score:bestScore([...p.cards,...r.community])}))
-      .sort((a:any,b:any)=>compareScore(b.score,a.score));
+    if(!contenders.length){
+      // A layer with no live contender is dead money. Keep it with the next
+      // lower contestable pot instead of silently deleting chips.
+      pending+=amount;
+      continue;
+    }
+
+    const potAmount=amount+pending;
+    pending=0;
+    const scored=contenders.map((p:any)=>({
+      p,
+      score:bestScore([...p.cards,...r.community])
+    })).sort((a:any,b:any)=>compareScore(b.score,a.score));
+
     const top=scored[0].score;
     const winners=scored.filter((x:any)=>compareScore(x.score,top)===0);
-    const share=Math.floor(amount/winners.length);
-    winners.forEach((w:any,i:number)=>w.p.chips+=share+(i<amount-share*winners.length?1:0));
-    r.log.push(`${winners.map((w:any)=>w.p.name).join("、")} 以「${HAND_NAMES[top[0]]}」赢得 ${amount} 筹码`);
+    const share=Math.floor(potAmount/winners.length);
+    const remainder=potAmount-share*winners.length;
+
+    winners.forEach((w:any,i:number)=>{
+      w.p.chips+=share+(i<remainder?1:0);
+    });
+
+    awarded+=potAmount;
+    r.log.push(
+      \`${winners.map((w:any)=>w.p.name).join("、")} 以「${HAND_NAMES[top[0]]}」赢得 ${potAmount} 筹码\`
+    );
   }
-  r.pot=0;r.stage="handover";
+
+  // This should only be reachable for a malformed hand where all contribution
+  // layers had no live contender. The normal awardSingle path handles the
+  // one-live-player case before showdown.
+  if(pending>0){
+    const winner=r.players.find((p:any)=>p.inHand&&!p.folded);
+    if(winner){
+      winner.chips+=pending;
+      awarded+=pending;
+      r.log.push(\`${winner.name} 赢得 ${pending} 筹码（无其他有效竞争者）\`);
+    }
+  }
+
+  r.pot=0;
+  r.currentBet=0;
+  r.stage="handover";
 }
 function contestants(r:any){return r.players.filter((p:any)=>p.inHand&&!p.folded&&!p.allIn);}
 function dealCommunity(r:any,n:number){r.deck.pop();for(let i=0;i<n;i++)r.community.push(r.deck.pop());}
