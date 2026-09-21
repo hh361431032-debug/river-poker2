@@ -76,6 +76,33 @@ function inferLegacyAction(current:any,desired:any,username:string){
   }
   throw new Error("UNSUPPORTED_ROOM_MUTATION");
 }
+async function uploadDataUrl(dataUrl:string,folder:string,name:string){
+  if(!dataUrl||!dataUrl.startsWith("data:image/"))return dataUrl||null;
+  const m=dataUrl.match(/^data:(image\\/[a-zA-Z0-9.+-]+);base64,(.+)$/);
+  if(!m)throw new Error("INVALID_IMAGE_DATA");
+  const mime=m[1],raw=m[2];
+  const binary=Uint8Array.from(atob(raw),ch=>ch.charCodeAt(0));
+  if(binary.byteLength>2*1024*1024)throw new Error("IMAGE_TOO_LARGE");
+  const ext=(mime.split("/")[1]||"jpeg").replace("jpeg","jpg").replace(/[^a-z0-9]/gi,"").slice(0,8)||"jpg";
+  const path=`${folder}/${name}-${crypto.randomUUID()}.${ext}`;
+  const {error}=await db.storage.from("poker-assets").upload(path,binary,{contentType:mime,cacheControl:"31536000",upsert:false});
+  if(error)throw error;
+  return db.storage.from("poker-assets").getPublicUrl(path).data.publicUrl;
+}
+async function normalizeRoomAvatars(room:any){
+  const next=structuredClone(room.state);
+  let changed=false;
+  for(const p of next.players||[]){
+    if(typeof p.avatar==="string"&&p.avatar.startsWith("data:image/")){
+      p.avatar=await uploadDataUrl(p.avatar,"avatars",String(p.name||"player").replace(/[^a-zA-Z0-9_-]/g,"_").slice(0,24)||"player");
+      changed=true;
+    }
+  }
+  if(!changed)return room;
+  const st=await writeRoom(room.code,next,room.version,room.updated_at);
+  return {code:room.code,state:next,version:st.version,updated_at:st.updated_at};
+}
+
 function playerFor(room:any,username:string,playerToken:string){
   const p=room.state.players.find((x:any)=>x.name===username);
   if(!p||!playerToken||p.sessionToken!==playerToken)throw new Error("SESSION_INVALID");
@@ -100,7 +127,8 @@ Deno.serve(async(req)=>{
       const sessionToken=token();
       const chips=Math.max(100,Math.min(100000,Number(body.startingChips)||1000));
       const turnSeconds=Math.max(5,Math.min(300,Number(body.turnSeconds)||30));
-      const room={code:roomCode,name:String(body.name||`${username} 的牌桌`).trim(),hostName:username,status:"waiting",stage:"waiting",startingChips:chips,turnSeconds,players:[{name:username,avatar:body.avatar||null,chips,cards:[],folded:false,allIn:false,bet:0,totalContributed:0,hasActed:false,inHand:false,waitingForNext:false,kicked:false,sessionToken}],dealerIndex:null,turnIndex:null,turnStartedAt:null,deck:[],community:[],pot:0,currentBet:0,minRaise:20,log:[],handNumber:0};
+      const avatar=await uploadDataUrl(String(body.avatar||""),"avatars",username.replace(/[^a-zA-Z0-9_-]/g,"_").slice(0,24)||"player");
+      const room={code:roomCode,name:String(body.name||`${username} 的牌桌`).trim(),hostName:username,status:"waiting",stage:"waiting",startingChips:chips,turnSeconds,players:[{name:username,avatar,chips,cards:[],folded:false,allIn:false,bet:0,totalContributed:0,hasActed:false,inHand:false,waitingForNext:false,kicked:false,sessionToken}],dealerIndex:null,turnIndex:null,turnStartedAt:null,deck:[],community:[],pot:0,currentBet:0,minRaise:20,log:[],handNumber:0};
       const updatedAt=new Date().toISOString();
       const {error}=await db.from("poker_rooms").insert({code:roomCode,name:room.name,host_name:username,player_count:1,status:"waiting",state:room,version:1,updated_at:updatedAt});
       if(error)throw error;
@@ -212,7 +240,7 @@ Deno.serve(async(req)=>{
         const nextState=structuredClone(room.state);
         const p=nextState.players.find((x:any)=>x.name===username);
         if(!p)throw new Error("PLAYER_NOT_IN_ROOM");
-        p.avatar=String(body.avatar||"").slice(0,200000)||null;
+        p.avatar=await uploadDataUrl(String(body.avatar||""),"avatars",username.replace(/[^a-zA-Z0-9_-]/g,"_").slice(0,24)||"player");
         next=nextState;
         break;
       }
