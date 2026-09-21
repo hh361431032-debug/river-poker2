@@ -90,6 +90,10 @@ async function uploadDataUrl(dataUrl:string,folder:string,name:string){
   return db.storage.from("poker-assets").getPublicUrl(path).data.publicUrl;
 }
 async function normalizeRoomAvatars(room:any){
+  // 旧房间可能还带 Base64 头像，而且部分旧牌局由历史引擎写入了
+  // 与当前校验器不同的 pot/currentBet。读取/加入房间不应该因为头像迁移
+  // 把这种历史房间直接判死。
+  if(room.state.status==="playing")return room;
   const next=structuredClone(room.state);
   let changed=false;
   for(const p of next.players||[]){
@@ -99,8 +103,13 @@ async function normalizeRoomAvatars(room:any){
     }
   }
   if(!changed)return room;
-  const st=await writeRoom(room.code,next,room.version,room.updated_at);
-  return {code:room.code,state:next,version:st.version,updated_at:st.updated_at};
+  try{
+    const st=await writeRoom(room.code,next,room.version,room.updated_at);
+    return {code:room.code,state:next,version:st.version,updated_at:st.updated_at};
+  }catch(e){
+    if(errorMessage(e)==="INVALID_ROOM_STATE")return room;
+    throw e;
+  }
 }
 
 function playerFor(room:any,username:string,playerToken:string){
