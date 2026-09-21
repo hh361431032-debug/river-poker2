@@ -46,7 +46,39 @@ drop policy if exists "poker_users_public" on public.poker_users;
 create policy "poker_users_public" on public.poker_users for all to anon, authenticated using (true) with check (true);
 
 drop policy if exists "poker_rooms_public" on public.poker_rooms;
-create policy "poker_rooms_public" on public.poker_rooms for all to anon, authenticated using (true) with check (true);
+drop policy if exists "poker_rooms_read_only" on public.poker_rooms;
+create policy "poker_rooms_read_only" on public.poker_rooms for select to anon, authenticated using (true);
+
+alter table public.poker_rooms drop constraint if exists poker_rooms_player_count_check;
+alter table public.poker_rooms add constraint poker_rooms_player_count_check check (player_count between 0 and 8);
+alter table public.poker_rooms drop constraint if exists poker_rooms_version_check;
+alter table public.poker_rooms add constraint poker_rooms_version_check check (version >= 1);
+
+create or replace function public.enforce_poker_room_version()
+returns trigger
+language plpgsql
+as $
+begin
+  if TG_OP = 'UPDATE' then
+    if new.version <> old.version + 1 then
+      raise exception 'ROOM_VERSION_SEQUENCE_INVALID' using errcode = '23514';
+    end if;
+    if new.updated_at <= old.updated_at then
+      raise exception 'ROOM_UPDATED_AT_NOT_MONOTONIC' using errcode = '23514';
+    end if;
+  elsif TG_OP = 'INSERT' then
+    if new.version <> 1 then
+      raise exception 'ROOM_INITIAL_VERSION_INVALID' using errcode = '23514';
+    end if;
+  end if;
+  return new;
+end;
+$;
+
+drop trigger if exists poker_room_version_guard on public.poker_rooms;
+create trigger poker_room_version_guard
+before insert or update on public.poker_rooms
+for each row execute function public.enforce_poker_room_version;
 
 drop policy if exists "poker_messages_public" on public.poker_messages;
 create policy "poker_messages_public" on public.poker_messages for all to anon, authenticated using (true) with check (true);
