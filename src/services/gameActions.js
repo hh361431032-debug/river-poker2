@@ -1,11 +1,31 @@
 import { supabase } from "./supabase";
 
-const FUNCTION_NAME = "game-action";\nconst FUNCTION_REGION = import.meta.env.VITE_FUNCTION_REGION || "ap-southeast-1";
+const FUNCTION_NAME = "game-action";
+const FUNCTION_REGION = import.meta.env.VITE_FUNCTION_REGION || "ap-southeast-1";
 
 export async function gameAction(payload) {
+  const started = performance.now();
+
   const { data, error } = await supabase.functions.invoke(FUNCTION_NAME, {
     body: payload,
   });
+
+  const clientMs = Math.round((performance.now() - started) * 100) / 100;
+
+  if (data?.timing) {
+    console.debug("[河畔牌局] action timing", {
+      action: payload?.action,
+      clientMs,
+      ...data.timing,
+      edgeRegion: data.edgeRegion,
+    });
+  } else {
+    console.debug("[河畔牌局] action timing", {
+      action: payload?.action,
+      clientMs,
+      serverTiming: "missing",
+    });
+  }
 
   if (error) {
     let detail = error.message || "牌局服务器请求失败";
@@ -16,6 +36,11 @@ export async function gameAction(payload) {
         if (body?.error) detail = body.error;
       }
     } catch {}
+    console.warn("[河畔牌局] action failed", {
+      action: payload?.action,
+      clientMs,
+      error: detail,
+    });
     throw new Error(detail);
   }
 
