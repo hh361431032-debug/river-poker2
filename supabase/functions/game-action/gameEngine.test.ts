@@ -73,8 +73,8 @@ Deno.test("pot ledger: builds main pot and one side pot from unequal all-ins", (
 Deno.test("side pots: short all-in wins only the main pot", () => {
   const r=room([
     player("A",50,0,{cards:[{r:14,s:"h"},{r:14,s:"d"}]}),
-    player("B",100,0,{cards:[{r:2,s:"h"},{r:3,s:"h"}]}),
-    player("C",100,0,{cards:[{r:4,s:"h"},{r:5,s:"h"}]}),
+    player("B",100,0,{cards:[{r:3,s:"h"},{r:4,s:"h"}]}),
+    player("C",100,0,{cards:[{r:5,s:"h"},{r:6,s:"h"}]}),
   ]);
   const before=chipsTotal(r);
   distributePots(r);
@@ -94,10 +94,10 @@ Deno.test("multiple side pots: each layer is limited to players who reached it",
   ]);
   const before=chipsTotal(r);
   const pots=buildPots(r);
-  if (pots.map((p:any)=>p.amount).join(",")!=="200,100,100") throw new Error("multi-pot amounts are wrong");
+  if (pots.map((p:any)=>p.amount).join(",")!=="200,150,100") throw new Error("multi-pot amounts are wrong");
   distributePots(r);
   const stacks=Object.fromEntries(r.players.map((p:any)=>[p.name,p.chips]));
-  if (stacks.B!==300) throw new Error("B should win main pot plus first side pot");
+  if (stacks.B!==350) throw new Error("B should win main pot plus first side pot");
   if (stacks.C!==100) throw new Error("C should win the deepest side pot");
   if (stacks.A!==0||stacks.D!==0) throw new Error("unexpected side-pot winner");
   if (chipsTotal(r)!==before) throw new Error("chips were created or destroyed");
@@ -121,7 +121,9 @@ Deno.test("odd chip goes to the first tied player clockwise from the button", ()
     player("A",50,0,{cards:[{r:3,s:"h"},{r:4,s:"d"}]}),
     player("B",50,0,{cards:[{r:5,s:"h"},{r:6,s:"d"}]}),
     player("C",1,0,{folded:true}),
-  ],{dealerIndex:2});
+  ],{dealerIndex:2,community:[
+    {r:14,s:"s"},{r:14,s:"h"},{r:13,s:"d"},{r:13,s:"c"},{r:12,s:"s"}
+  ]});
   distributePots(r);
   const a=r.players.find((p:any)=>p.name==="A");
   const b=r.players.find((p:any)=>p.name==="B");
@@ -159,10 +161,10 @@ Deno.test("multiple short all-ins cumulatively reopen betting", () => {
   const r={
     players:[
       player("A",100,200,{bet:100}),
-      player("B",100,25,{bet:100}),
-      player("C",100,100,{bet:100}),
-      player("D",100,100,{bet:100}),
-      player("E",100,100,{bet:100}),
+      player("B",100,25,{bet:100,hasActed:false,lastActedBet:100}),
+      player("C",100,100,{bet:100,hasActed:false,lastActedBet:100}),
+      player("D",100,100,{bet:100,hasActed:false,lastActedBet:100}),
+      player("E",100,100,{bet:100,hasActed:false,lastActedBet:100}),
     ],
     community:[],
     pot:500,
@@ -235,6 +237,7 @@ Deno.test("a full raise reopens a player who previously checked", () => {
       player("B",0,100,{bet:0}),
     ],
     community:[],
+    deck:Array.from({length:20},()=>({r:2,s:"s"})),
     pot:0,
     currentBet:0,
     minRaise:20,
