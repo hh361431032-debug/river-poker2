@@ -7,18 +7,21 @@ import Lobby from "./components/Lobby";
 import GameTable, { WaitingRoom } from "./components/PokerTable";
 
 function RoomController({code,username,avatar,initialState=null,initialPlayerToken="",onAvatarChange,onLeaveLobby}){
-  const [room,setRoom]=useState(initialState), busy=useRef(false), roomJsonRef=useRef(initialState?JSON.stringify(initialState):""), roomUpdatedAtRef=useRef(null), playerTokenRef=useRef(initialPlayerToken||"");
+  const [room,setRoom]=useState(initialState),[pendingAction,setPendingAction]=useState(null), busy=useRef(false), roomJsonRef=useRef(initialState?JSON.stringify(initialState):""), roomUpdatedAtRef=useRef(null), roomVersionRef=useRef(initialState?.version||0), playerTokenRef=useRef(initialPlayerToken||"");
   const applyServerResult=useCallback((res)=>{
     if(!res?.state)return false;
     const json=JSON.stringify(res.state);
     roomJsonRef.current=json;
     roomUpdatedAtRef.current=res.updatedAt||roomUpdatedAtRef.current;
+    if(res.version!=null)roomVersionRef.current=res.version;
     if(res.playerToken)playerTokenRef.current=res.playerToken;
     setRoom(res.state);
     return true;
   },[]);
-  const load=useCallback(async()=>{
+  const load=useCallback(async(payload=null)=>{
     if(busy.current)return;
+    const incomingVersion=Number(payload?.new?.version||0);
+    if(incomingVersion&&incomingVersion<=Number(roomVersionRef.current||0))return;
     try{
       const res=await pokerActions.joinRoom(code,username,avatar||null);
       if(res?.deleted){onLeaveLobby();return;}
@@ -30,23 +33,23 @@ function RoomController({code,username,avatar,initialState=null,initialPlayerTok
   },[code,username,avatar,onLeaveLobby,applyServerResult]);
   useEffect(()=>{
     if(!initialState)load();
-    const channel=supabase.channel(`poker-room-${code}`).on("postgres_changes",{event:"*",schema:"public",table:"poker_rooms",filter:`code=eq.${code}`},load).subscribe();
-    const fallback=setInterval(load,5000);
+    const channel=supabase.channel(`poker-room-${code}`).on("postgres_changes",{event:"*",schema:"public",table:"poker_rooms",filter:`code=eq.${code}`},payload=>load(payload)).subscribe();
+    const fallback=setInterval(()=>load(),15000);
     return()=>{clearInterval(fallback);supabase.removeChannel(channel);};
   },[load,code,initialState]);
   const serverAction=useCallback(async(action,extra={})=>{
     if(busy.current)return false;
     busy.current=true;
+    setPendingAction(action);
     try{
       const res=await pokerActions[action](code,username,playerTokenRef.current,...Object.values(extra));
       if(res?.deleted){onLeaveLobby();return true;}
       return applyServerResult(res);
     }catch(err){
       console.warn("[河畔牌局] 服务器拒绝操作：",err);
-      await load();
       return false;
-    }finally{busy.current=false;}
-  },[code,username,load,applyServerResult,onLeaveLobby]);
+    }finally{busy.current=false;setPendingAction(null);}
+  },[code,username,applyServerResult,onLeaveLobby]);
   const kick=name=>serverAction("kick",{targetName:name});
   const leave=async()=>{await serverAction("leave");onLeaveLobby();};
   useEffect(()=>{
@@ -58,8 +61,9 @@ function RoomController({code,username,avatar,initialState=null,initialPlayerTok
     return()=>clearTimeout(t);
   },[room?.turnStartedAt,room?.turnIndex,room?.stage,room?.handNumber,room?.turnSeconds,room?.hostName,username,serverAction]);
   if(!room)return <div className="page loading">加载房间中…</div>;
-  if(room.status!=="playing"||room.stage==="waiting")return <WaitingRoom room={room} username={username} onStart={()=>serverAction("startHand")} onLeave={leave} onKick={kick}/>;
+  if(room.status!=="playing"||room.stage==="waiting")return <WaitingRoom room={room} username={username} pendingAction={pendingAction} onStart={()=>serverAction("startHand")} onLeave={leave} onKick={kick}/>;
   return <GameTable
+    pendingAction={pendingAction}
     onThrow={(target,item)=>serverAction("throw",{targetName:target,itemKey:item})}
     room={room}
     username={username}
