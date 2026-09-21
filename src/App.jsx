@@ -18,8 +18,8 @@ function RoomController({code,username,avatar,initialState=null,initialPlayerTok
     setRoom(res.state);
     return true;
   },[]);
-  const load=useCallback(async(payload=null)=>{
-    if(busy.current)return;
+  const load=useCallback(async(payload=null,force=false)=>{
+    if(busy.current&&!force)return;
     const incomingVersion=Number(payload?.new?.version||0);
     if(incomingVersion&&incomingVersion<=Number(roomVersionRef.current||0))return;
     try{
@@ -32,20 +32,20 @@ function RoomController({code,username,avatar,initialState=null,initialPlayerTok
     }
   },[code,username,avatar,onLeaveLobby,applyServerResult]);
   useEffect(()=>{
-    let realtimeReady=false;
+    const realtimeReadyRef={current:false};
     let stopped=false;
     if(!initialState)load();
     const channel=supabase.channel(`poker-room-${code}`)
       .on("postgres_changes",{event:"*",schema:"public",table:"poker_rooms",filter:`code=eq.${code}`},payload=>load(payload))
       .subscribe(status=>{
-        realtimeReady=status==="SUBSCRIBED";
-        console.debug("[河畔牌局] Realtime:",status);
+        realtimeReadyRef.current=status==="SUBSCRIBED";
+        console.info("[河畔牌局] Realtime:",status);
       });
     const fallback=setInterval(()=>{
-      // WebSocket 连不上时用短轮询保证多人房间仍能及时同步；
-      // WebSocket 正常时保持低频保活，避免双通道重复刷新。
+      // Realtime 正常时不再高频重复 join_room；断线时才恢复短轮询。
+      if(realtimeReadyRef.current)return;
       load();
-    },realtimeReady?15000:2500);
+    },2500);
     return()=>{stopped=true;clearInterval(fallback);supabase.removeChannel(channel);};
   },[load,code,initialState]);
   const serverAction=useCallback(async(action,extra={})=>{
@@ -61,7 +61,7 @@ function RoomController({code,username,avatar,initialState=null,initialPlayerTok
       // 服务器判定轮次已变化时，当前 UI 已经落后；
       // 只补一次最新状态，不再把用户踢回大厅。
       if(err?.message==="NOT_YOUR_TURN"){
-        try{await load();}catch{}
+        try{await load(null,true);}catch{}
       }
       return false;
     }finally{busy.current=false;setPendingAction(null);}
