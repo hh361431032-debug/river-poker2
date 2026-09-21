@@ -78,7 +78,7 @@ function inferLegacyAction(current:any,desired:any,username:string){
 }
 async function uploadDataUrl(dataUrl:string,folder:string,name:string){
   if(!dataUrl||!dataUrl.startsWith("data:image/"))return dataUrl||null;
-  const m=dataUrl.match(/^data:(image\\/[a-zA-Z0-9.+-]+);base64,(.+)$/);
+  const m=dataUrl.match(/^data:(image\/[a-zA-Z0-9.+-]+);base64,(.+)$/);
   if(!m)throw new Error("INVALID_IMAGE_DATA");
   const mime=m[1],raw=m[2];
   const binary=Uint8Array.from(atob(raw),ch=>ch.charCodeAt(0));
