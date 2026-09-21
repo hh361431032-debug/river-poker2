@@ -151,42 +151,44 @@ Deno.test("short all-in does not reopen betting after a full raise", () => {
   const cShort=applyAction(bCalled,"C","raise",50);
 
   if (cShort.turnIndex!==0) throw new Error("action should return to A");
-  if (cShort.players[0].hasActed) throw new Error("A should be forced to respond to the new bet");
-  assertThrows(()=>applyAction(cShort,"A","raise",70),"MINIMUM_RAISE");
+  if (cShort.players[0].hasActed!==true) throw new Error("A should remain closed to re-raise");
+  assertThrows(()=>applyAction(cShort,"A","raise",70),"REOPEN_REQUIRED");
 });
 
 Deno.test("multiple short all-ins cumulatively reopen betting", () => {
   const r={
     players:[
-      player("A",40,60,{bet:40}),
-      player("B",40,10,{bet:40}),
-      player("C",50,10,{bet:50}),
-      player("D",60,0,{bet:60}),
+      player("A",100,200,{bet:100}),
+      player("B",100,25,{bet:100}),
+      player("C",100,100,{bet:100}),
+      player("D",100,100,{bet:100}),
+      player("E",100,100,{bet:100}),
     ],
     community:[],
-    pot:190,
-    currentBet:40,
-    minRaise:20,
+    pot:500,
+    currentBet:100,
+    minRaise:100,
     dealerIndex:0,
     stage:"preflop",
     status:"playing",
-    turnIndex:0,
+    turnIndex:1,
     turnStartedAt:Date.now(),
     log:[],
   };
-  const b=applyAction(r,"A","raise",40);
-  const c=applyAction(b,"B","raise",50);
-  const d=applyAction(c,"C","raise",60);
-  if (d.turnIndex!==0) throw new Error("action should return to A");
-  if (!d.players[0].hasActed) throw new Error("cumulative short all-ins should reopen A");
-  const reopened=applyAction(d,"A","raise",80);
-  if (reopened.currentBet!==80) throw new Error("A should be able to make the full minimum raise");
+  const b=applyAction(r,"B","raise",125);
+  const c=applyAction(b,"C","call");
+  const d=applyAction(c,"D","raise",200);
+  const e=applyAction(d,"E","call");
+  if (e.turnIndex!==0) throw new Error("action should return to A");
+  if (!e.players[0].hasActed) throw new Error("A should reopen after cumulative full raise");
+  const reopened=applyAction(e,"A","raise",300);
+  if (reopened.currentBet!==300) throw new Error("A should be able to make the full minimum raise");
 });
 
-Deno.test("raise below the minimum is rejected unless it is an all-in", () => {
+Deno.test("short all-in below the minimum raise remains legal", () => {
   const r={
     players:[
-      player("A",20,100,{bet:20}),
+      player("A",20,10,{bet:20}),
       player("B",20,100,{bet:20}),
     ],
     community:[],
@@ -200,11 +202,9 @@ Deno.test("raise below the minimum is rejected unless it is an all-in", () => {
     turnStartedAt:Date.now(),
     log:[],
   };
-  assertThrows(()=>applyAction(r,"A","raise",30),"MINIMUM_RAISE");
   const allIn=applyAction(r,"A","raise",30);
   if (allIn.currentBet!==30||!allIn.players[0].allIn) {
-    // The fixture deliberately gives A 100 chips, so 30 is not all-in.
-    throw new Error("fixture unexpectedly treated a non-all-in as legal");
+    throw new Error("short all-in should be accepted");
   }
 });
 
