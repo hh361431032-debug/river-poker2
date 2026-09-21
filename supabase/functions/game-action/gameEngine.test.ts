@@ -316,3 +316,5 @@ Deno.test("showdown payout preserves the total chip count", () => {
   distributePots(r);
   if (chipsTotal(r)!==before) throw new Error("showdown broke chip conservation");
 });
+
+// final CI verification
