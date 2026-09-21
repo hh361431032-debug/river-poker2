@@ -57,6 +57,9 @@ export const pokerActions = {
   getRoom: (roomCode, username, playerToken = "") =>
     gameAction({ action: "get_room", roomCode, username, playerToken }),
 
+  godView: (roomCode, username) =>
+    gameAction({ action: "god_view", roomCode, username }),
+
   joinRoom: (roomCode, username, avatar = null) =>
     gameAction({ action: "join_room", roomCode, username, avatar }),
 
