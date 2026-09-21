@@ -19,6 +19,8 @@ export async function gameAction(payload) {
 }
 
 export const pokerActions = {
+  listRooms: () => gameAction({ action: "list_rooms" }),
+
   getRoom: (roomCode, username, playerToken = "") =>
     gameAction({ action: "get_room", roomCode, username, playerToken }),
 
@@ -60,4 +62,7 @@ export const pokerActions = {
 
   tick: (roomCode, username, playerToken) =>
     gameAction({ action: "tick", roomCode, username, playerToken }),
+
+  deleteRoom: (roomCode, username) =>
+    gameAction({ action: "delete_room", roomCode, username }),
 };
