@@ -51,7 +51,7 @@ function RoomController({code,username,avatar,initialState=null,initialPlayerTok
     }finally{busy.current=false;setPendingAction(null);}
   },[code,username,applyServerResult,onLeaveLobby]);
   const kick=name=>serverAction("kick",{targetName:name});
-  const leave=async()=>{await serverAction("leave");onLeaveLobby();};
+  const leave=async()=>{const ok=await serverAction("leave");if(ok)onLeaveLobby();};
   useEffect(()=>{
     if(!room||room.hostName!==username||room.stage==="handover"||room.stage==="waiting"||!room.turnStartedAt||room.turnIndex==null)return;
     const startedAt=room.turnStartedAt,turnIndex=room.turnIndex,stage=room.stage,handNumber=room.handNumber,ms=(room.turnSeconds||30)*1000-(Date.now()-startedAt);
