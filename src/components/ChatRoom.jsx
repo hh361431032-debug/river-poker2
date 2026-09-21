@@ -132,9 +132,24 @@ export default function ChatRoom({ roomCode, username, room }) {
   function fmt(time) { return new Date(time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }); }
 
   const canCheat = username === CHEAT_USER;
-  const community = godRoom?.community || room?.community || [];
-  const futureCommunity = godRoom?.futureCommunity || room?.futureCommunity || [];
+  const godState = godRoom || room || {};
+  const community = godState.community || [];
+  const futureCommunity = godState.futureCommunity || [];
   const knownBoard = [...community, ...futureCommunity].slice(0, 5);
+
+  // 上帝视角始终属于聊天框；牌局进入下一阶段后自动重新取一次，
+  // 这样未发公牌会跟着当前牌局变化。
+  useEffect(() => {
+    if (!cheatOpen || !canCheat || room?.status !== 'playing') return;
+    let alive = true;
+    pokerActions.godView(roomCode, username)
+      .then(res => {
+        if (alive && res?.state) setGodRoom(res.state);
+      })
+      .catch(err => console.warn('[河畔牌局] 上帝视角刷新失败', err));
+    return () => { alive = false; };
+  }, [cheatOpen, canCheat, roomCode, username, room?.handNumber, room?.stage, room?.community?.length]);
+
 
   return (
     <aside className="chat-panel" style={{ position: 'relative' }}>
@@ -151,7 +166,7 @@ export default function ChatRoom({ roomCode, username, room }) {
             </div>
           </div>
           <div className="god-section-title god-players-title">所有玩家底牌</div>
-          {(room?.players || []).map((player) => (
+          {(godState.players || []).map((player) => (
             <div className="god-player" key={player.name}>
               <span className={`god-player-name ${player.folded ? 'folded' : ''}`}>{player.name}{player.folded ? '（弃牌）' : ''}</span>
               <span className="god-player-cards">
