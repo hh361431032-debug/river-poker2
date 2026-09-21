@@ -19,6 +19,24 @@ function roomMetaFromState(state) {
   };
 }
 
+async function uploadDataUrl(dataUrl, folder, name) {
+  if (!dataUrl || !String(dataUrl).startsWith("data:image/")) return dataUrl || null;
+  const match = String(dataUrl).match(/^data:(image\\/[^;]+);base64,(.+)$/);
+  if (!match) throw new Error("图片格式无效");
+  const mime = match[1];
+  const bytes = Uint8Array.from(atob(match[2]), ch => ch.charCodeAt(0));
+  if (bytes.byteLength > 2 * 1024 * 1024) throw new Error("图片不能超过 2MB");
+  const ext = (mime.split("/")[1] || "jpeg").replace("jpeg", "jpg").replace(/[^a-z0-9]/gi, "") || "jpg";
+  const path = `${folder}/${String(name || "image").replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 32)}-${crypto.randomUUID()}.${ext}`;
+  const { error } = await supabase.storage.from("poker-assets").upload(path, bytes, {
+    contentType: mime,
+    cacheControl: "31536000",
+    upsert: false,
+  });
+  if (error) throw error;
+  return supabase.storage.from("poker-assets").getPublicUrl(path).data.publicUrl;
+}
+
 function mapUser(row) {
   if (!row) return null;
   return {
@@ -111,7 +129,7 @@ export const storage = {
     };
   },
 
-  async setUserAvatar(username, avatarUrl) {
+  async setUserAvatar(username, avatarUrl) {\n    avatarUrl = await uploadDataUrl(avatarUrl, "avatars", username);
     const { data: old, error: readError } = await supabase
       .from("poker_users")
       .select("username")
@@ -153,10 +171,10 @@ export const storage = {
       .maybeSingle();
 
     if (error) throw error;
-    return data?.dealer_image_url || null;
+    let imageUrl = data?.dealer_image_url || null;\n    if (imageUrl?.startsWith("data:image/")) {\n      imageUrl = await uploadDataUrl(imageUrl, "dealer", "luna");\n      const { error: migrateError } = await supabase.from("poker_users").update({ dealer_image_url: imageUrl }).eq("username", "莫拉咕");\n      if (migrateError) throw migrateError;\n    }\n    return imageUrl;
   },
 
-  async setDealerImage(imageUrl) {
+  async setDealerImage(imageUrl) {\n    imageUrl = await uploadDataUrl(imageUrl, "dealer", "luna");
     const { data: old, error: readError } = await supabase
       .from("poker_users")
       .select("username")
