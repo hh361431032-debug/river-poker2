@@ -324,7 +324,7 @@ export function validateRoomState(room:any){
   }
   for(const k of ["pot","currentBet","minRaise","handNumber"]) if(!Number.isInteger(room[k])||room[k]<0)throw new Error("INVALID_ROOM_STATE");
   if(room.minRaise<=0||!Array.isArray(room.community)||room.community.length>5||!Array.isArray(room.deck)||room.deck.length>52)throw new Error("INVALID_ROOM_STATE");
-  if(room.status==="playing"){
+  if(room.status==="playing"&&room.stage!=="handover"){
     const live=room.players.filter((p:any)=>p.inHand&&!p.folded);
     if(live.length<1||room.turnIndex==null||room.turnIndex<0||room.turnIndex>=room.players.length)throw new Error("INVALID_ROOM_STATE");
     const expectedPot=room.players.reduce((sum:number,p:any)=>sum+p.totalContributed,0);
