@@ -118,14 +118,14 @@ Deno.test("folded contribution stays in the pot but folded player cannot win", (
 
 Deno.test("odd chip goes to the first tied player clockwise from the button", () => {
   const r=room([
-    player("A",50,0,{cards:[{r:2,s:"h"},{r:3,s:"d"}]}),
-    player("B",50,0,{cards:[{r:4,s:"h"},{r:5,s:"d"}]}),
+    player("A",50,0,{cards:[{r:3,s:"h"},{r:4,s:"d"}]}),
+    player("B",50,0,{cards:[{r:5,s:"h"},{r:6,s:"d"}]}),
     player("C",1,0,{folded:true}),
   ],{dealerIndex:2});
   distributePots(r);
   const a=r.players.find((p:any)=>p.name==="A");
   const b=r.players.find((p:any)=>p.name==="B");
-  if (a.chips!==50||b.chips!==51) throw new Error("odd chip was not assigned clockwise from the button");
+  if (a.chips!==51||b.chips!==50) throw new Error("odd chip was not assigned clockwise from the button");
 });
 
 Deno.test("short all-in does not reopen betting after a full raise", () => {
@@ -206,6 +206,30 @@ Deno.test("short all-in below the minimum raise remains legal", () => {
   if (allIn.currentBet!==30||!allIn.players[0].allIn) {
     throw new Error("short all-in should be accepted");
   }
+});
+
+Deno.test("a full raise reopens a player who previously checked", () => {
+  const r={
+    players:[
+      player("A",0,100,{bet:0}),
+      player("B",0,100,{bet:0}),
+    ],
+    community:[],
+    pot:0,
+    currentBet:0,
+    minRaise:20,
+    dealerIndex:0,
+    stage:"preflop",
+    status:"playing",
+    turnIndex:0,
+    turnStartedAt:Date.now(),
+    log:[],
+  };
+  const checked=applyAction(r,"A","check");
+  const bet=applyAction(checked,"B","raise",20);
+  if (bet.players[0].hasActed) throw new Error("A was not reopened by the full bet");
+  const raised=applyAction(bet,"A","raise",40);
+  if (raised.currentBet!==40) throw new Error("check-raise was incorrectly blocked");
 });
 
 Deno.test("all-in blind hand auto-runs out when nobody can act", () => {
