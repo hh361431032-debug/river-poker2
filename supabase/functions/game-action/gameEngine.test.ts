@@ -72,7 +72,7 @@ Deno.test("pot ledger: builds main pot and one side pot from unequal all-ins", (
 
 Deno.test("side pots: short all-in wins only the main pot", () => {
   const r=room([
-    player("A",50,0,{cards:[{r:14,s:"h"},{r:14,d:"d"}]}),
+    player("A",50,0,{cards:[{r:14,s:"h"},{r:14,s:"d"}]}),
     player("B",100,0,{cards:[{r:2,s:"h"},{r:3,s:"h"}]}),
     player("C",100,0,{cards:[{r:4,s:"h"},{r:5,s:"h"}]}),
   ]);
@@ -88,9 +88,9 @@ Deno.test("side pots: short all-in wins only the main pot", () => {
 Deno.test("multiple side pots: each layer is limited to players who reached it", () => {
   const r=room([
     player("A",50,0,{cards:[{r:2,s:"h"},{r:3,s:"h"}]}),
-    player("B",100,0,{cards:[{r:14,s:"h"},{r:14,d:"d"}]}),
-    player("C",150,0,{cards:[{r:13,s:"h"},{r:12,d:"d"}]}),
-    player("D",150,0,{cards:[{r:11,s:"h"},{r:10,d:"d"}]}),
+    player("B",100,0,{cards:[{r:14,s:"h"},{r:14,s:"d"}]}),
+    player("C",150,0,{cards:[{r:13,s:"h"},{r:12,s:"d"}]}),
+    player("D",150,0,{cards:[{r:11,s:"h"},{r:10,s:"d"}]}),
   ]);
   const before=chipsTotal(r);
   const pots=buildPots(r);
@@ -105,7 +105,7 @@ Deno.test("multiple side pots: each layer is limited to players who reached it",
 
 Deno.test("folded contribution stays in the pot but folded player cannot win", () => {
   const r=room([
-    player("A",100,0,{folded:true,cards:[{r:14,s:"h"},{r:14,d:"d"}]}),
+    player("A",100,0,{folded:true,cards:[{r:14,s:"h"},{r:14,s:"d"}]}),
     player("B",100,0,{cards:[{r:2,s:"h"},{r:3,s:"h"}]}),
     player("C",100,0,{cards:[{r:4,s:"h"},{r:5,s:"h"}]}),
   ]);
@@ -306,7 +306,7 @@ Deno.test("folding to one live player awards the whole pot", () => {
 
 Deno.test("showdown payout preserves the total chip count", () => {
   const r=room([
-    player("A",50,50,{cards:[{r:14,s:"h"},{r:14,d:"d"}]}),
+    player("A",50,50,{cards:[{r:14,s:"h"},{r:14,s:"d"}]}),
     player("B",50,50,{cards:[{r:2,s:"h"},{r:3,s:"h"}]}),
   ]);
   const before=chipsTotal(r);
