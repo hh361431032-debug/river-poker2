@@ -1,6 +1,6 @@
 import { supabase } from "./supabase";
 
-const FUNCTION_NAME = "game-action";
+const FUNCTION_NAME = "game-action";\nconst FUNCTION_REGION = import.meta.env.VITE_FUNCTION_REGION || "ap-southeast-1";
 
 export async function gameAction(payload) {
   const { data, error } = await supabase.functions.invoke(FUNCTION_NAME, {
