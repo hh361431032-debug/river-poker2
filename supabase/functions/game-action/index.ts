@@ -188,8 +188,13 @@ Deno.serve(async(req)=>{
     let next;
     switch(action){
       case "start_hand":
+        if(room.state.hostName!==username)throw new Error("NOT_HOST");
+        if(room.state.status!=="waiting"||room.state.stage!=="waiting")throw new Error("INVALID_GAME_STATE");
+        if(room.state.players.length<2)throw new Error("NOT_ENOUGH_PLAYERS");
+        next=startHand(room.state);break;
       case "next_hand":
         if(room.state.hostName!==username)throw new Error("NOT_HOST");
+        if(room.state.status!=="playing"||room.state.stage!=="handover")throw new Error("INVALID_GAME_STATE");
         if(room.state.players.length<2)throw new Error("NOT_ENOUGH_PLAYERS");
         next=startHand(room.state);break;
       case "fold":
@@ -236,7 +241,7 @@ Deno.serve(async(req)=>{
     return json({success:true,state:privateView(next,username,username==="莫拉咕"),version:st.version,updatedAt:st.updated_at});
   }catch(e){
     const msg=errorMessage(e);
-    const map:any={ROOM_NOT_FOUND:404,PLAYER_NOT_IN_ROOM:403,SESSION_INVALID:403,NOT_YOUR_TURN:409,ROOM_VERSION_CONFLICT:409,ROOM_FULL:409,NOT_HOST:403,NOT_ENOUGH_PLAYERS:409,NOT_ADMIN:403,MINIMUM_RAISE:400};
+    const map:any={ROOM_NOT_FOUND:404,PLAYER_NOT_IN_ROOM:403,SESSION_INVALID:403,NOT_YOUR_TURN:409,ROOM_VERSION_CONFLICT:409,ROOM_FULL:409,NOT_HOST:403,NOT_ENOUGH_PLAYERS:409,NOT_ADMIN:403,MINIMUM_RAISE:400,INVALID_GAME_STATE:409};
     return json({success:false,error:msg},map[msg]||400);
   }
 });
