@@ -95,3 +95,31 @@ begin
   end if;
 end
 $$;
+
+
+-- 图片与牌局 JSON 分离：头像/荷官图片进入 Supabase Storage。
+insert into storage.buckets (id,name,public)
+values ('poker-assets','poker-assets',true)
+on conflict (id) do update set public=true;
+
+drop policy if exists "poker_assets_public_read" on storage.objects;
+create policy "poker_assets_public_read"
+on storage.objects for select
+to anon, authenticated
+using (bucket_id='poker-assets');
+
+drop policy if exists "poker_assets_public_insert" on storage.objects;
+create policy "poker_assets_public_insert"
+on storage.objects for insert
+to anon, authenticated
+with check (
+  bucket_id='poker-assets'
+  and (name like 'avatars/%' or name like 'dealer/%')
+);
+
+drop policy if exists "poker_assets_service_write" on storage.objects;
+create policy "poker_assets_service_write"
+on storage.objects for all
+to service_role
+using (bucket_id='poker-assets')
+with check (bucket_id='poker-assets');
