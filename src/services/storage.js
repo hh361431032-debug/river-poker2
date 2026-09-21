@@ -123,13 +123,21 @@ export const storage = {
     if (error) throw error;
     if (!data) return null;
 
+    let avatarUrl = data.avatar_url || null;
+    if (avatarUrl?.startsWith("data:image/")) {
+      avatarUrl = await uploadDataUrl(avatarUrl, "avatars", username);
+      const { error: migrateError } = await supabase.from("poker_users").update({ avatar_url: avatarUrl }).eq("username", username);
+      if (migrateError) throw migrateError;
+    }
     return {
       username: data.username,
-      avatarUrl: data.avatar_url || null,
+      avatarUrl,
+    };
     };
   },
 
-  async setUserAvatar(username, avatarUrl) {\n    avatarUrl = await uploadDataUrl(avatarUrl, "avatars", username);
+  async setUserAvatar(username, avatarUrl) {
+    avatarUrl = await uploadDataUrl(avatarUrl, "avatars", username);
     const { data: old, error: readError } = await supabase
       .from("poker_users")
       .select("username")
