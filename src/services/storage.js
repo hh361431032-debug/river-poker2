@@ -113,6 +113,17 @@ export const storage = {
     return null;
   },
 
+  async getUser(username) {
+    const { data, error } = await supabase
+      .from("poker_users")
+      .select("username,password_hash,chips,avatar_url")
+      .eq("username", username)
+      .maybeSingle();
+
+    if (error) throw error;
+    return mapUser(data);
+  },
+
   async getUserProfile(username) {
     const { data, error } = await supabase
       .from("poker_users")
