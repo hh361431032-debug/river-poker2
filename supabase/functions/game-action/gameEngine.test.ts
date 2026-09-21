@@ -10,7 +10,7 @@ function player(name:string, contributed:number, chips:number, extra:any={}) {
     cards: extra.cards || [],
     folded: !!extra.folded,
     allIn: chips === 0,
-    bet: 0,
+    bet: extra.bet ?? 0,
     totalContributed: contributed,
     hasActed: true,
     lastActedBet: contributed,
@@ -69,9 +69,9 @@ Deno.test("folded over-contribution remains in the contestable pot", () => {
 Deno.test("short all-in does not reopen betting after a full raise", () => {
   const r = {
     players: [
-      player("A",20,80,{cards:[{r:2,s:"h"},{r:3,s:"h"}]}),
-      player("B",20,80,{cards:[{r:4,s:"h"},{r:5,s:"h"}]}),
-      player("C",20,30,{cards:[{r:6,s:"h"},{r:7,s:"h"}]}),
+      player("A",20,80,{bet:20,cards:[{r:2,s:"h"},{r:3,s:"h"}]}),
+      player("B",20,80,{bet:20,cards:[{r:4,s:"h"},{r:5,s:"h"}]}),
+      player("C",20,30,{bet:20,cards:[{r:6,s:"h"},{r:7,s:"h"}]}),
     ],
     community: [],
     pot: 60,
