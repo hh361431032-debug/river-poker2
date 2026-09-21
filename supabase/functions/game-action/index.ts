@@ -119,8 +119,12 @@ function playerFor(room:any,username:string,playerToken:string){
 }
 Deno.serve(async(req)=>{
   if(req.method==="OPTIONS")return new Response("ok",{headers:corsHeaders});
+  const requestStarted=performance.now();
+  const timing:any={};
   try{
+    const parseStarted=performance.now();
     const body=await req.json();
+    timing.parseMs=Math.round((performance.now()-parseStarted)*100)/100;
     const action=body?.action;
     const code=String(body?.roomCode||"").trim().toUpperCase();
     const username=String(body?.username||"").trim();
@@ -184,7 +188,9 @@ Deno.serve(async(req)=>{
       publish(code,next,st.version,st.updated_at);publishLobby();
       return json({success:true,state:privateView(next,username,username==="莫拉咕"),version:st.version,updatedAt:st.updated_at,playerToken:p.sessionToken});
     }
+    const readStarted=performance.now();
     let room=await readRoom(code);
+    timing.readMs=Math.round((performance.now()-readStarted)*100)/100;
     room=await normalizeRoomAvatars(room);
     if(action==="delete_room"){
       if(username!=="莫拉咕")throw new Error("NOT_ADMIN");
@@ -227,6 +233,7 @@ Deno.serve(async(req)=>{
       return json({success:true,state:privateView(reconciled,username,username==="莫拉咕"),version:st.version,updatedAt:st.updated_at});
     }
     let next;
+    const engineStarted=performance.now();
     switch(action){
       case "start_hand":
         if(room.state.hostName!==username)throw new Error("NOT_HOST");
@@ -274,14 +281,20 @@ Deno.serve(async(req)=>{
       default:throw new Error("UNKNOWN_ACTION");
     }
     timing.engineMs=Math.round((performance.now()-engineStarted)*100)/100;
+    timing.engineMs=Math.round((performance.now()-engineStarted)*100)/100;
     if(next===null){
       await db.from("poker_rooms").delete().eq("code",code);publishLobby();
-      return json({success:true,deleted:true});
+      timing.totalMs=Math.round((performance.now()-requestStarted)*100)/100;
+      return json({success:true,deleted:true,timing,edgeRegion:Deno.env.get("SB_REGION")||"unknown"});
     }
+    const writeStarted=performance.now();
     const st=await writeRoom(code,next,room.version,room.updated_at);
+    timing.writeMs=Math.round((performance.now()-writeStarted)*100)/100;
     publish(code,next,st.version,st.updated_at);publishLobby();
-    return json({success:true,state:privateView(next,username,username==="莫拉咕"),version:st.version,updatedAt:st.updated_at});
+    timing.totalMs=Math.round((performance.now()-requestStarted)*100)/100;
+    return json({success:true,state:privateView(next,username,username==="莫拉咕"),version:st.version,updatedAt:st.updated_at,timing,edgeRegion:Deno.env.get("SB_REGION")||"unknown"});
   }catch(e){
+    timing.totalMs=Math.round((performance.now()-requestStarted)*100)/100;
     const msg=errorMessage(e);
     const map:any={ROOM_NOT_FOUND:404,PLAYER_NOT_IN_ROOM:403,SESSION_INVALID:403,NOT_YOUR_TURN:409,ROOM_VERSION_CONFLICT:409,ROOM_FULL:409,NOT_HOST:403,NOT_ENOUGH_PLAYERS:409,NOT_ADMIN:403,MINIMUM_RAISE:400,REOPEN_REQUIRED:400,INVALID_GAME_STATE:409};
     return json({success:false,error:msg,timing,edgeRegion:Deno.env.get("SB_REGION")||"unknown"},map[msg]||400);
