@@ -1,0 +1,63 @@
+import { supabase } from "./supabase";
+
+const FUNCTION_NAME = "game-action";
+
+export async function gameAction(payload) {
+  const { data, error } = await supabase.functions.invoke(FUNCTION_NAME, {
+    body: payload,
+  });
+
+  if (error) {
+    throw new Error(error.message || "牌局服务器请求失败");
+  }
+
+  if (!data?.success) {
+    throw new Error(data?.error || "牌局操作失败");
+  }
+
+  return data;
+}
+
+export const pokerActions = {
+  getRoom: (roomCode, username, playerToken = "") =>
+    gameAction({ action: "get_room", roomCode, username, playerToken }),
+
+  joinRoom: (roomCode, username, avatar = null) =>
+    gameAction({ action: "join_room", roomCode, username, avatar }),
+
+  createRoom: (payload) =>
+    gameAction({ action: "create_room", ...payload }),
+
+  startHand: (roomCode, username, playerToken) =>
+    gameAction({ action: "start_hand", roomCode, username, playerToken }),
+
+  nextHand: (roomCode, username, playerToken) =>
+    gameAction({ action: "next_hand", roomCode, username, playerToken }),
+
+  fold: (roomCode, username, playerToken) =>
+    gameAction({ action: "fold", roomCode, username, playerToken }),
+
+  check: (roomCode, username, playerToken) =>
+    gameAction({ action: "check", roomCode, username, playerToken }),
+
+  call: (roomCode, username, playerToken) =>
+    gameAction({ action: "call", roomCode, username, playerToken }),
+
+  raise: (roomCode, username, playerToken, amount) =>
+    gameAction({ action: "raise", roomCode, username, playerToken, amount }),
+
+  throw: (roomCode, username, playerToken, targetName, itemKey) =>
+    gameAction({ action: "throw", roomCode, username, playerToken, targetName, itemKey }),
+
+  kick: (roomCode, username, playerToken, targetName) =>
+    gameAction({ action: "kick", roomCode, username, playerToken, targetName }),
+
+  leave: (roomCode, username, playerToken) =>
+    gameAction({ action: "leave", roomCode, username, playerToken }),
+
+  updateAvatar: (roomCode, username, playerToken, avatar) =>
+    gameAction({ action: "update_avatar", roomCode, username, playerToken, avatar }),
+
+  tick: (roomCode, username, playerToken) =>
+    gameAction({ action: "tick", roomCode, username, playerToken }),
+};
