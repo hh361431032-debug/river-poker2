@@ -79,7 +79,7 @@ async function getLocalUserProfile(username) {
 const onlineStorage = {
   async get(key) {
     if (key === "poker:session") {
-      const value = localSession().getItem(localKey(key));
+      const value = localStorage.getItem(localKey(key));
       return value === null ? null : { value };
     }
 
@@ -173,7 +173,7 @@ const onlineStorage = {
 
   async set(key, value, options = {}) {
     if (key === "poker:session") {
-      localSession().setItem(localKey(key), value);
+      localStorage.setItem(localKey(key), value);
       notify();
       return { success: true };
     }
@@ -237,7 +237,7 @@ const onlineStorage = {
 
   async delete(key) {
     if (key === "poker:session") {
-      localSession().removeItem(localKey(key));
+      localStorage.removeItem(localKey(key));
       notify();
       return { success: true };
     }
