@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import { storage } from "./services/storage";
 import { pokerActions } from "./services/gameActions";
 import { isLocalBackend } from "./services/backendMode";
+import { subscribeLocalEvents } from "./services/localEvents";
 import { supabase } from "./services/supabase";
 import AuthScreen from "./components/AuthScreen";
 import Lobby from "./components/Lobby";
@@ -41,15 +42,14 @@ function RoomController({code,username,avatar,initialState=null,initialPlayerTok
     if(!initialState)load();
 
     if(isLocalBackend){
-      const events=new EventSource("/api/events");
-      events.addEventListener("change",event=>{
+      const unsubscribe=subscribeLocalEvents(event=>{
         if(stopped)return;
         try{
           const payload=JSON.parse(event.data);
           if(payload?.table==="poker_rooms")load(payload);
         }catch{}
       });
-      return()=>{stopped=true;events.close();};
+      return()=>{stopped=true;unsubscribe();};
     }
 
     const realtimeReadyRef={current:false};
