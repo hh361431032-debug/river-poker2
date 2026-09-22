@@ -1,9 +1,42 @@
+import { isLocalBackend } from "./backendMode";
 import { supabase } from "./supabase";
 
 const FUNCTION_NAME = "game-action";
 const FUNCTION_REGION = import.meta.env.VITE_FUNCTION_REGION || "ap-southeast-1";
 
-export async function gameAction(payload) {
+async function localGameAction(payload) {
+  const started = performance.now();
+  const response = await fetch("/api/game-action", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+
+  let data = null;
+  try { data = await response.json(); } catch {}
+
+  const clientMs = Math.round((performance.now() - started) * 100) / 100;
+  console.info("[河畔牌局] action timing", JSON.stringify({
+    action: payload?.action,
+    clientMs,
+    ...(data?.timing || { serverTiming: "missing" }),
+    backend: "local",
+  }));
+
+  if (!response.ok || !data?.success) {
+    const detail = data?.error || "牌局操作失败";
+    console.warn("[河畔牌局] action failed", {
+      action: payload?.action,
+      clientMs,
+      error: detail,
+      backend: "local",
+    });
+    throw new Error(detail);
+  }
+  return data;
+}
+
+async function supabaseGameAction(payload) {
   const started = performance.now();
 
   const { data, error } = await supabase.functions.invoke(FUNCTION_NAME, {
@@ -18,12 +51,15 @@ export async function gameAction(payload) {
       clientMs,
       ...data.timing,
       edgeRegion: data.edgeRegion,
+      backend: "supabase",
+      functionRegion: FUNCTION_REGION,
     }));
   } else {
     console.info("[河畔牌局] action timing", JSON.stringify({
       action: payload?.action,
       clientMs,
       serverTiming: "missing",
+      backend: "supabase",
     }));
   }
 
@@ -40,6 +76,7 @@ export async function gameAction(payload) {
       action: payload?.action,
       clientMs,
       error: detail,
+      backend: "supabase",
     });
     throw new Error(detail);
   }
@@ -49,6 +86,10 @@ export async function gameAction(payload) {
   }
 
   return data;
+}
+
+export async function gameAction(payload) {
+  return isLocalBackend ? localGameAction(payload) : supabaseGameAction(payload);
 }
 
 export const pokerActions = {
