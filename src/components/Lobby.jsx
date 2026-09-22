@@ -6,6 +6,7 @@ import { supabase } from "../services/supabase";
 import { Avatar, AvatarPicker } from "./CommonUI";
 import { MAX_PLAYERS } from "../game/gameEngine";
 import { playSound } from "../services/sound";
+import { subscribeLocalEvents } from "../services/localEvents";
 
 const ADMIN_USERNAME = "莫拉咕";
 
@@ -16,10 +17,8 @@ function Lobby({username,avatar,onAvatarChange,onEnterRoom,onLogout}){
   useEffect(()=>{
     refresh();
     if(isLocalBackend){
-      const events=new EventSource("/api/events");
-      const onChange=()=>refresh();
-      events.addEventListener("change",onChange);
-      return()=>events.close();
+      const unsubscribe=subscribeLocalEvents(()=>refresh());
+      return()=>unsubscribe();
     }
     const channel=supabase.channel("poker-lobby").on("postgres_changes",{event:"*",schema:"public",table:"poker_rooms"},refresh).subscribe();
     return()=>supabase.removeChannel(channel);
