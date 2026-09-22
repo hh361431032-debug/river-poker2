@@ -37,7 +37,7 @@ function roomMetaFromState(state) {
 
 async function uploadDataUrl(dataUrl, folder, name) {
   if (!dataUrl || !String(dataUrl).startsWith("data:image/")) return dataUrl || null;
-  const match = String(dataUrl).match(/^data:(image\\/[^;]+);base64,(.+)$/);
+  const match = String(dataUrl).match(/^data:(image\/[^;]+);base64,(.+)$/);
   if (!match) throw new Error("图片格式无效");
   const mime = match[1];
   const bytes = Uint8Array.from(atob(match[2]), ch => ch.charCodeAt(0));
