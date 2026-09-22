@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { storage } from "./services/storage";
 import { pokerActions } from "./services/gameActions";
+import { isLocalBackend } from "./services/backendMode";
 import { supabase } from "./services/supabase";
 import AuthScreen from "./components/AuthScreen";
 import Lobby from "./components/Lobby";
@@ -20,29 +21,15 @@ function RoomController({code,username,avatar,initialState=null,initialPlayerTok
   },[]);
   const load=useCallback(async(payload=null,force=false)=>{
     if(busy.current&&!force)return;
-
-    // Realtime 只负责“通知状态变了”，不要再次执行 join_room。
-    // join_room 会读写/广播房间状态，连续触发会造成大量重复请求。
     const incomingVersion=Number(payload?.new?.version||0);
     if(incomingVersion&&incomingVersion<=Number(roomVersionRef.current||0))return;
-
     try{
       const token=playerTokenRef.current;
       let res;
-
-      // 已经在房间：只读最新状态。
-      // 没有 token：说明是通过直链进入，首次需要真正 join 一次。
-      if(token){
-        res=await pokerActions.getRoom(code,username,token);
-      }else{
-        res=await pokerActions.joinRoom(code,username,avatar||null);
-      }
-
+      if(token)res=await pokerActions.getRoom(code,username,token);
+      else res=await pokerActions.joinRoom(code,username,avatar||null);
       if(res?.deleted){onLeaveLobby();return;}
-      if(res?.member===false){
-        // 直链进入且尚未入座，保持现有加入流程。
-        res=await pokerActions.joinRoom(code,username,avatar||null);
-      }
+      if(res?.member===false)res=await pokerActions.joinRoom(code,username,avatar||null);
       applyServerResult(res);
     }catch(err){
       console.error("[河畔牌局] 房间加载失败：",err);
@@ -50,9 +37,22 @@ function RoomController({code,username,avatar,initialState=null,initialPlayerTok
     }
   },[code,username,avatar,onLeaveLobby,applyServerResult]);
   useEffect(()=>{
-    const realtimeReadyRef={current:false};
     let stopped=false;
     if(!initialState)load();
+
+    if(isLocalBackend){
+      const events=new EventSource("/api/events");
+      events.addEventListener("change",event=>{
+        if(stopped)return;
+        try{
+          const payload=JSON.parse(event.data);
+          if(payload?.table==="poker_rooms")load(payload);
+        }catch{}
+      });
+      return()=>{stopped=true;events.close();};
+    }
+
+    const realtimeReadyRef={current:false};
     const channel=supabase.channel(`poker-room-${code}`)
       .on("postgres_changes",{event:"*",schema:"public",table:"poker_rooms",filter:`code=eq.${code}`},payload=>load(payload))
       .subscribe(status=>{
@@ -60,7 +60,6 @@ function RoomController({code,username,avatar,initialState=null,initialPlayerTok
         console.info("[河畔牌局] Realtime:",status);
       });
     const fallback=setInterval(()=>{
-      // Realtime 正常时不再高频重复 join_room；断线时才恢复短轮询。
       if(realtimeReadyRef.current)return;
       load();
     },2500);
@@ -76,14 +75,12 @@ function RoomController({code,username,avatar,initialState=null,initialPlayerTok
       return applyServerResult(res);
     }catch(err){
       console.warn("[河畔牌局] 服务器拒绝操作：",err);
-      // 服务器判定轮次已变化时，当前 UI 已经落后；
-      // 只补一次最新状态，不再把用户踢回大厅。
       if(err?.message==="NOT_YOUR_TURN"){
         try{await load(null,true);}catch{}
       }
       return false;
     }finally{busy.current=false;setPendingAction(null);}
-  },[code,username,applyServerResult,onLeaveLobby]);
+  },[code,username,applyServerResult,onLeaveLobby,load]);
   const kick=name=>serverAction("kick",{targetName:name});
   const leave=async()=>{const ok=await serverAction("leave");if(ok)onLeaveLobby();};
   useEffect(()=>{
@@ -94,10 +91,7 @@ function RoomController({code,username,avatar,initialState=null,initialPlayerTok
     const checkTimeout=async()=>{
       if(cancelled)return;
       const remaining=startedAt+limit-Date.now();
-      if(remaining>0){
-        setTimeout(checkTimeout,Math.min(remaining+50,1000));
-        return;
-      }
+      if(remaining>0){setTimeout(checkTimeout,Math.min(remaining+50,1000));return;}
       const ok=await serverAction("tick");
       if(!ok&&!cancelled)setTimeout(checkTimeout,500);
     };
@@ -120,6 +114,25 @@ function RoomController({code,username,avatar,initialState=null,initialPlayerTok
   />;
 }
 
-export default function App(){const [username,setUsername]=useState(null),[avatar,setAvatar]=useState(null),[roomCode,setRoomCode]=useState(null),[roomEntry,setRoomEntry]=useState(null),[checking,setChecking]=useState(true);useEffect(()=>{(async()=>{const res=await storage.get("poker:session");if(res?.value){setUsername(res.value);try{const profile=await storage.getUserProfile(res.value);setAvatar(profile?.avatarUrl||null);}catch{setAvatar(null);}}setChecking(false);})();},[]);const login=useCallback(async (u,avatarOverride=null)=>{setUsername(u);setAvatar(avatarOverride||null);await storage.set("poker:session",u);},[]);const logout=useCallback(async()=>{setUsername(null);setAvatar(null);setRoomCode(null);setRoomEntry(null);await storage.delete("poker:session");},[]);const leaveLobby=useCallback(()=>{setRoomCode(null);setRoomEntry(null);},[]);const saveAvatar=useCallback(async data=>{await storage.setUserAvatar(username,data);setAvatar(data);},[username]);const enterRoom=useCallback((code,state,playerToken)=>{setRoomCode(code);setRoomEntry({state,playerToken});},[]);useEffect(()=>{const code=new URLSearchParams(location.search).get("room");if(username&&code){setRoomCode(code.trim().toUpperCase());setRoomEntry(null);}},[username]);if(checking)return <div className="page loading">正在进入河畔牌局…</div>;return <div className="app">{!username?<AuthScreen onLogin={login}/>:roomCode?<RoomController code={roomCode} username={username} avatar={avatar} initialState={roomEntry?.state||null} initialPlayerToken={roomEntry?.playerToken||""} onAvatarChange={saveAvatar} onLeaveLobby={leaveLobby}/>:<Lobby username={username} avatar={avatar} onAvatarChange={saveAvatar} onEnterRoom={enterRoom} onLogout={logout}/>}</div>;}
+export default function App(){
+  const [username,setUsername]=useState(null),[avatar,setAvatar]=useState(null),[roomCode,setRoomCode]=useState(null),[roomEntry,setRoomEntry]=useState(null),[checking,setChecking]=useState(true);
+  useEffect(()=>{(async()=>{
+    const res=await storage.get("poker:session");
+    if(res?.value){
+      setUsername(res.value);
+      try{const profile=await storage.getUserProfile(res.value);setAvatar(profile?.avatarUrl||null);}
+      catch{setAvatar(null);}
+    }
+    setChecking(false);
+  })();},[]);
+  const login=useCallback(async(u,avatarOverride=null)=>{setUsername(u);setAvatar(avatarOverride||null);await storage.set("poker:session",u);},[]);
+  const logout=useCallback(async()=>{setUsername(null);setAvatar(null);setRoomCode(null);setRoomEntry(null);await storage.delete("poker:session");},[]);
+  const leaveLobby=useCallback(()=>{setRoomCode(null);setRoomEntry(null);},[]);
+  const saveAvatar=useCallback(async data=>{await storage.setUserAvatar(username,data);setAvatar(data);},[username]);
+  const enterRoom=useCallback((code,state,playerToken)=>{setRoomCode(code);setRoomEntry({state,playerToken});},[]);
+  useEffect(()=>{const code=new URLSearchParams(location.search).get("room");if(username&&code){setRoomCode(code.trim().toUpperCase());setRoomEntry(null);}},[username]);
+  if(checking)return <div className="page loading">正在进入河畔牌局…</div>;
+  return <div className="app">{!username?<AuthScreen onLogin={login}/>:roomCode?<RoomController code={roomCode} username={username} avatar={avatar} initialState={roomEntry?.state||null} initialPlayerToken={roomEntry?.playerToken||""} onAvatarChange={saveAvatar} onLeaveLobby={leaveLobby}/>:<Lobby username={username} avatar={avatar} onAvatarChange={saveAvatar} onEnterRoom={enterRoom} onLogout={logout}/>}</div>;
+}
 const ADMIN_USERNAME = "莫拉咕";
 const ADMIN_PASSWORD = "1234";
