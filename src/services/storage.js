@@ -245,7 +245,7 @@ const localStorageAdapter = {
   async setUserAvatar(username, avatarUrl) {
     await localDb("poker_users", {
       method: "POST",
-      body: { username, password_hash: "", chips: 1000, avatar_url: avatarUrl || null, dealer_image_url: null, __upsert: true },
+      body: { username, password_hash: "", chips: 1000, avatar_url: avatarUrl || null, __upsert: true },
     });
     notify();
     return { success: true };
@@ -274,7 +274,7 @@ const localStorageAdapter = {
       for (const [username, u] of Object.entries(users)) {
         await localDb("poker_users", {
           method: "POST",
-          body: { username, password_hash: u.passwordHash || "", chips: Number(u.chips ?? 1000), avatar_url: u.avatarUrl || null, dealer_image_url: null, __upsert: true },
+          body: { username, password_hash: u.passwordHash || "", chips: Number(u.chips ?? 1000), avatar_url: u.avatarUrl || null, __upsert: true },
         });
       }
       notify();
