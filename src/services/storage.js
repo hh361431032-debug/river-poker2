@@ -176,10 +176,23 @@ const onlineStorage = {
     if (key === "poker:users") {
       const users = JSON.parse(value || "{}");
       for (const [username, u] of Object.entries(users)) {
-        const payload = { username, password_hash: u.passwordHash || "", chips: Number(u.chips ?? 1000), avatar_url: u.avatarUrl || null, dealer_image_url: null, __upsert: true };
-        await localDb("poker_users", { method: "POST", body: payload });
+        const { data: existing, error: readError } = await supabase.from("poker_users").select("username").eq("username", username).maybeSingle();
+        if (readError) throw readError;
+        const payload = {
+          password_hash: u.passwordHash || "",
+          chips: Number(u.chips ?? 1000),
+          avatar_url: u.avatarUrl || null,
+        };
+        if (existing) {
+          const { error } = await supabase.from("poker_users").update(payload).eq("username", username);
+          if (error) throw error;
+        } else {
+          const { error } = await supabase.from("poker_users").insert({ username, ...payload, dealer_image_url: null });
+          if (error) throw error;
+        }
       }
-      notify(); return { success: true };
+      notify();
+      return { success: true };
     }
     if (key.startsWith("poker:room:")) {
       const code = key.replace("poker:room:", "");
