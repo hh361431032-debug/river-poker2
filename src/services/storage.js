@@ -99,37 +99,48 @@ const onlineStorage = {
 
     if (key.startsWith("poker:room:")) {
       const code = key.replace("poker:room:", "");
-      const state = JSON.parse(value);
-      const meta = roomMetaFromState(state);
-      const expectedUpdatedAt = options.expectedUpdatedAt || null;
-
-      if (!expectedUpdatedAt) {
-        const { data: existing, error: readError } = await supabase
-          .from("poker_rooms")
-          .select("code")
-          .eq("code", code)
-          .maybeSingle();
-        if (readError) throw readError;
-        if (existing) throw new Error("ROOM_VERSION_REQUIRED");
-
-        const { error } = await supabase.from("poker_rooms").insert({ ...meta, state });
-        if (error) throw error;
-        return { success: true };
-      }
-
-      const nextUpdatedAt = new Date().toISOString();
-      const { data, error } = await supabase
-        .from("poker_rooms")
-        .update({ ...meta, state, updated_at: nextUpdatedAt })
-        .eq("code", code)
-        .eq("updated_at", expectedUpdatedAt)
-        .select("updated_at")
-        .maybeSingle();
-
+      const { data, error } = await supabase.from("poker_rooms").select("state").eq("code", code).maybeSingle();
       if (error) throw error;
-      if (!data) return { success: false, conflict: true };
-      return { success: true, updatedAt: data.updated_at };
+      if (!data) return null;
+      const state = typeof data.state === "string" ? JSON.parse(data.state) : data.state;
+      return { value: JSON.stringify(state) };
     }
+
+    return null;
+  },
+
+  async getUser(username) {
+    const { data, error } = await supabase.from("poker_users").select("username,password_hash,avatar_url").eq("username", username).maybeSingle();
+    if (error) throw error;
+    return mapUser(data);
+  },
+
+  async getUserProfile(username) {
+    const { data, error } = await supabase.from("poker_users").select("username,avatar_url").eq("username", username).maybeSingle();
+    if (error) throw error;
+    if (!data) return null;
+    let avatarUrl = data.avatar_url || null;
+    if (avatarUrl?.startsWith("data:image/")) {
+      avatarUrl = await uploadDataUrl(avatarUrl, "avatars", username);
+      const { error: migrateError } = await supabase.from("poker_users").update({ avatar_url: avatarUrl }).eq("username", username);
+      if (migrateError) throw migrateError;
+    }
+    return { username: data.username, avatarUrl };
+  },
+
+  async setUserAvatar(username, avatarUrl) {
+    avatarUrl = await uploadDataUrl(avatarUrl, "avatars", username);
+    const { data: old, error: readError } = await supabase.from("poker_users").select("username").eq("username", username).maybeSingle();
+    if (readError) throw readError;
+    if (old) {
+      const { error } = await supabase.from("poker_users").update({ avatar_url: avatarUrl || null }).eq("username", username);
+      if (error) throw error;
+    } else {
+      const { error } = await supabase.from("poker_users").insert({ username, password_hash: "", chips: 1000, avatar_url: avatarUrl || null, dealer_image_url: null });
+      if (error) throw error;
+    }
+    notify();
+    return { success: true };
   },
 
   async getDealerImage() {
@@ -161,18 +172,23 @@ const onlineStorage = {
 
   async set(key, value, options = {}) {
     if (key === "poker:session") {
-      localStorage.setItem(localKey(key), value); notify(); return { success: true };
+      localStorage.setItem(localKey(key), value);
+      notify();
+      return { success: true };
     }
+
     if (key === "poker:users") {
       const users = JSON.parse(value || "{}");
       for (const [username, u] of Object.entries(users)) {
         const { data: existing, error: readError } = await supabase.from("poker_users").select("username").eq("username", username).maybeSingle();
         if (readError) throw readError;
+
         const payload = {
           password_hash: u.passwordHash || "",
           chips: Number(u.chips ?? 1000),
           avatar_url: u.avatarUrl || null,
         };
+
         if (existing) {
           const { error } = await supabase.from("poker_users").update(payload).eq("username", username);
           if (error) throw error;
@@ -181,39 +197,57 @@ const onlineStorage = {
           if (error) throw error;
         }
       }
+
       notify();
       return { success: true };
     }
+
     if (key.startsWith("poker:room:")) {
       const code = key.replace("poker:room:", "");
       const state = JSON.parse(value);
+      const meta = roomMetaFromState(state);
       const expectedUpdatedAt = options.expectedUpdatedAt || null;
+
       if (!expectedUpdatedAt) {
-        const existing = await localDb("poker_rooms", { query: { eq: `code:${code}`, single: 1, select: "code" } });
+        const { data: existing, error: readError } = await supabase.from("poker_rooms").select("code").eq("code", code).maybeSingle();
+        if (readError) throw readError;
         if (existing) throw new Error("ROOM_VERSION_REQUIRED");
-        await localDb("poker_rooms", { method: "POST", body: { ...roomMetaFromState(state), state } });
+
+        const { error } = await supabase.from("poker_rooms").insert({ ...meta, state });
+        if (error) throw error;
         return { success: true };
       }
-      const data = await localDb("poker_rooms", {
-        method: "PATCH",
-        query: { eq: `code:${code}` },
-        body: { ...roomMetaFromState(state), state },
-      });
-      return { success: true, updatedAt: data?.[0]?.updated_at || null };
+
+      const nextUpdatedAt = new Date().toISOString();
+      const { data, error } = await supabase.from("poker_rooms")
+        .update({ ...meta, state, updated_at: nextUpdatedAt })
+        .eq("code", code)
+        .eq("updated_at", expectedUpdatedAt)
+        .select("updated_at")
+        .maybeSingle();
+
+      if (error) throw error;
+      if (!data) return { success: false, conflict: true };
+      return { success: true, updatedAt: data.updated_at };
     }
+
     return { success: true };
   },
 
   async delete(key) {
     if (key === "poker:session") {
-      localStorage.removeItem(localKey(key)); notify(); return { success: true };
+      localStorage.removeItem(localKey(key));
+      notify();
+      return { success: true };
     }
+
     if (key.startsWith("poker:room:")) {
       const code = key.replace("poker:room:", "");
       const { error } = await supabase.from("poker_rooms").delete().eq("code", code);
       if (error) throw error;
       notify();
     }
+
     return { success: true };
   },
 };
