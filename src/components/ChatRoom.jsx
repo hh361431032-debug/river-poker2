@@ -3,6 +3,7 @@ import { isLocalBackend } from '../services/backendMode';
 import { Send, MessageCircle, Eye, EyeOff } from 'lucide-react';
 import { supabase } from '../services/supabase';
 import { pokerActions } from '../services/gameActions';
+import { subscribeLocalEvents } from '../services/localEvents';
 
 const CHEAT_CODE = '透透透透';
 const CHEAT_USER = '莫拉咕';
@@ -91,7 +92,7 @@ export default function ChatRoom({ roomCode, username, room }) {
   useEffect(() => {
     let alive = true;
     let channel = null;
-    let events = null;
+    let unsubscribeLocal = null;
     async function loadMessages() {
       if (isLocalBackend) {
         const response = await fetch(`/api/db/poker_messages?select=id,username,text,created_at&eq=room_code:${encodeURIComponent(roomCode)}&order=created_at.asc&limit=100`);
@@ -104,8 +105,7 @@ export default function ChatRoom({ roomCode, username, room }) {
     }
     loadMessages();
     if (isLocalBackend) {
-      events = new EventSource('/api/events');
-      events.addEventListener('change', event => {
+      unsubscribeLocal = subscribeLocalEvents(event => {
         try {
           const payload = JSON.parse(event.data);
           if (payload?.table === 'poker_messages' && payload?.event === 'INSERT' && payload?.new?.room_code === roomCode) {
@@ -119,7 +119,7 @@ export default function ChatRoom({ roomCode, username, room }) {
         setMessages((prev) => prev.some((m) => m.id === payload.new.id) ? prev : [...prev, payload.new].slice(-100));
       }).subscribe();
     }
-    return () => { alive = false; if (events) events.close(); if (channel) supabase.removeChannel(channel); };
+    return () => { alive = false; if (unsubscribeLocal) unsubscribeLocal(); if (channel) supabase.removeChannel(channel); };
   }, [roomCode]);
 
   useEffect(() => {
