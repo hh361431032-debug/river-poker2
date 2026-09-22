@@ -37,12 +37,20 @@ function roomMetaFromState(state) {
 
 async function uploadDataUrl(dataUrl, folder, name) {
   if (!dataUrl || !String(dataUrl).startsWith("data:image/")) return dataUrl || null;
-  const match = String(dataUrl).match(/^data:(image\/[^;]+);base64,(.+)$/);
+  const match = String(dataUrl).match(/^data:(image\\/[^;]+);base64,(.+)$/);
   if (!match) throw new Error("图片格式无效");
+  const mime = match[1];
   const bytes = Uint8Array.from(atob(match[2]), ch => ch.charCodeAt(0));
   if (bytes.byteLength > 2 * 1024 * 1024) throw new Error("图片不能超过 2MB");
-  // 本地模式直接保存 Data URL 到 SQLite，不依赖 Supabase Storage。
-  return dataUrl;
+  const ext = (mime.split("/")[1] || "jpeg").replace("jpeg", "jpg").replace(/[^a-z0-9]/gi, "") || "jpg";
+  const path = `${folder}/${String(name || "image").replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 32)}-${crypto.randomUUID()}.${ext}`;
+  const { error } = await supabase.storage.from("poker-assets").upload(path, bytes, {
+    contentType: mime,
+    cacheControl: "31536000",
+    upsert: false,
+  });
+  if (error) throw error;
+  return supabase.storage.from("poker-assets").getPublicUrl(path).data.publicUrl;
 }
 
 function mapUser(row) {
@@ -110,10 +118,17 @@ const onlineStorage = {
     const { data, error } = await supabase.from("poker_users").select("username,avatar_url").eq("username", username).maybeSingle();
     if (error) throw error;
     if (!data) return null;
-    return { username: data.username, avatarUrl: data.avatar_url || null };
+    let avatarUrl = data.avatar_url || null;
+    if (avatarUrl?.startsWith("data:image/")) {
+      avatarUrl = await uploadDataUrl(avatarUrl, "avatars", username);
+      const { error: migrateError } = await supabase.from("poker_users").update({ avatar_url: avatarUrl }).eq("username", username);
+      if (migrateError) throw migrateError;
+    }
+    return { username: data.username, avatarUrl };
   },
 
   async setUserAvatar(username, avatarUrl) {
+    avatarUrl = await uploadDataUrl(avatarUrl, "avatars", username);
     const { data: old, error: readError } = await supabase.from("poker_users").select("username").eq("username", username).maybeSingle();
     if (readError) throw readError;
     if (old) {
@@ -130,10 +145,17 @@ const onlineStorage = {
   async getDealerImage() {
     const { data, error } = await supabase.from("poker_users").select("dealer_image_url").eq("username", "莫拉咕").maybeSingle();
     if (error) throw error;
-    return data?.dealer_image_url || null;
+    let imageUrl = data?.dealer_image_url || null;
+    if (imageUrl?.startsWith("data:image/")) {
+      imageUrl = await uploadDataUrl(imageUrl, "dealer", "luna");
+      const { error: migrateError } = await supabase.from("poker_users").update({ dealer_image_url: imageUrl }).eq("username", "莫拉咕");
+      if (migrateError) throw migrateError;
+    }
+    return imageUrl;
   },
 
   async setDealerImage(imageUrl) {
+    imageUrl = await uploadDataUrl(imageUrl, "dealer", "luna");
     const { data: old, error: readError } = await supabase.from("poker_users").select("username").eq("username", "莫拉咕").maybeSingle();
     if (readError) throw readError;
     if (old) {
