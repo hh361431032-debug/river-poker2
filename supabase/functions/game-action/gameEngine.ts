@@ -84,7 +84,7 @@ function nextSeat(room:any, from:number, fn:(p:any)=>boolean) {
 function awardSingle(r:any){
   const w=r.players.find((p:any)=>p.inHand&&!p.folded);
   if(w){w.chips+=r.pot;r.log.push(`${w.name} 赢得彩池 ${r.pot} 筹码（其他玩家弃牌）`);}
-  r.pot=0;r.currentBet=0;r.stage="handover";
+  r.pot=0;r.currentBet=0;r.deadPot=0;r.stage="handover";
 }
 export function buildPots(r:any){
   const contributors=r.players.filter((p:any)=>p.totalContributed>0);
@@ -203,6 +203,7 @@ export function startHand(room:any){
   r.players=r.players.filter((p:any)=>p.chips>0&&!p.kicked);
   if(r.players.length<2){r.stage="waiting";r.status="waiting";return r;}
   r.players.forEach((p:any)=>Object.assign(p,{cards:[],folded:false,allIn:false,bet:0,totalContributed:0,hasActed:false,lastActedBet:0,inHand:true,waitingForNext:false,kicked:false}));
+  r.deadPot=0;
   r.deck=shuffle(freshDeck());r.community=[];r.pot=0;r.currentBet=0;r.minRaise=BIG_BLIND;
   r.log=[];r.handNumber=(r.handNumber||0)+1;r.status="playing";r.stage="preflop";
   r.turnStartedAt=Date.now();r.dealerIndex=r.dealerIndex==null?0:(r.dealerIndex+1)%r.players.length;
@@ -284,6 +285,12 @@ export function leaveRoom(room:any,name:string){
     if(leaving.name===r.players[r.turnIndex]?.name)r=applyAction(r,name,"fold");
     else {const p=r.players.find((x:any)=>x.name===name);p.folded=true;p.hasActed=true;}
   }
+  // A player may leave after already putting chips into the pot. Those chips remain
+  // as dead money in the hand, so keep them accounted for after removing the seat.
+  if(r.status==="playing" && leaving.totalContributed>0){
+    r.deadPot=(Number(r.deadPot)||0)+Number(leaving.totalContributed||0);
+  }
+
   // Removing a seat before turnIndex shifts every later index.
   // Preserve the current turn by player name before filtering.
   const nextTurnName=r.status==="playing"&&r.stage!=="handover"
@@ -361,7 +368,7 @@ export function validateRoomState(room:any){
   if(room.status==="playing"&&room.stage!=="handover"){
     const live=room.players.filter((p:any)=>p.inHand&&!p.folded);
     if(live.length<1||room.turnIndex==null||room.turnIndex<0||room.turnIndex>=room.players.length)throw new Error("INVALID_ROOM_STATE");
-    const expectedPot=room.players.reduce((sum:number,p:any)=>sum+p.totalContributed,0);
+    const expectedPot=room.players.reduce((sum:number,p:any)=>sum+p.totalContributed,0)+(Number(room.deadPot)||0);
     if(expectedPot!==room.pot)throw new Error("INVALID_ROOM_STATE");
     const maxBet=Math.max(0,...live.map((p:any)=>p.bet));
     if(room.currentBet!==maxBet)throw new Error("INVALID_ROOM_STATE");
