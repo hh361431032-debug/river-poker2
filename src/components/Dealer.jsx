@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { Camera, Settings, Smartphone, RotateCcw } from "lucide-react";
 import { storage } from "../services/storage";
+import { isLocalBackend } from "../services/backendMode";
 import { supabase } from "../services/supabase";
 
 const lines = {
@@ -103,39 +104,33 @@ export default function Dealer({ room, dealing, username }) {
     const handler = () => load();
     window.addEventListener("river-poker-storage", handler);
 
-    // Supabase Realtime：房主/管理员在另一台设备修改后，所有用户立即同步
-    const channel = supabase
-      .channel("poker-dealer-image")
-      .on(
-        "postgres_changes",
-        {
-          event: "UPDATE",
-          schema: "public",
-          table: "poker_users",
-          filter: "username=eq.莫拉咕",
-        },
-        payload => {
+    let channel = null;
+    let events = null;
+    if (isLocalBackend) {
+      events = new EventSource("/api/events");
+      events.addEventListener("change", event => {
+        try {
+          const payload = JSON.parse(event.data);
+          if (payload?.table === "poker_users" && payload?.new?.username === "莫拉咕") load();
+        } catch {}
+      });
+    } else {
+      // Supabase Realtime：房主/管理员在另一台设备修改后，所有用户立即同步
+      channel = supabase.channel("poker-dealer-image")
+        .on("postgres_changes", { event: "UPDATE", schema: "public", table: "poker_users", filter: "username=eq.莫拉咕" }, payload => {
           if (alive) setImage(payload.new?.dealer_image_url || DEFAULT_IMAGE);
-        }
-      )
-      .on(
-        "postgres_changes",
-        {
-          event: "INSERT",
-          schema: "public",
-          table: "poker_users",
-          filter: "username=eq.莫拉咕",
-        },
-        payload => {
+        })
+        .on("postgres_changes", { event: "INSERT", schema: "public", table: "poker_users", filter: "username=eq.莫拉咕" }, payload => {
           if (alive) setImage(payload.new?.dealer_image_url || DEFAULT_IMAGE);
-        }
-      )
-      .subscribe();
+        })
+        .subscribe();
+    }
 
     return () => {
       alive = false;
       window.removeEventListener("river-poker-storage", handler);
-      supabase.removeChannel(channel);
+      if (events) events.close();
+      if (channel) supabase.removeChannel(channel);
     };
   }, []);
 
