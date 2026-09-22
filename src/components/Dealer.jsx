@@ -3,6 +3,7 @@ import { Camera, Settings, Smartphone, RotateCcw } from "lucide-react";
 import { storage } from "../services/storage";
 import { isLocalBackend } from "../services/backendMode";
 import { supabase } from "../services/supabase";
+import { subscribeLocalEvents } from "../services/localEvents";
 
 const lines = {
   waiting: "欢迎来到河畔牌局，等大家到齐我们就开始。",
@@ -105,10 +106,9 @@ export default function Dealer({ room, dealing, username }) {
     window.addEventListener("river-poker-storage", handler);
 
     let channel = null;
-    let events = null;
+    let unsubscribeLocal = null;
     if (isLocalBackend) {
-      events = new EventSource("/api/events");
-      events.addEventListener("change", event => {
+      unsubscribeLocal = subscribeLocalEvents(event => {
         try {
           const payload = JSON.parse(event.data);
           if (payload?.table === "poker_users" && payload?.new?.username === "莫拉咕") load();
@@ -129,7 +129,7 @@ export default function Dealer({ room, dealing, username }) {
     return () => {
       alive = false;
       window.removeEventListener("river-poker-storage", handler);
-      if (events) events.close();
+      if (unsubscribeLocal) unsubscribeLocal();
       if (channel) supabase.removeChannel(channel);
     };
   }, []);
