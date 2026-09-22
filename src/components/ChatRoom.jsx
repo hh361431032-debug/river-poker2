@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { isLocalBackend } from '../services/backendMode';
 import { Send, MessageCircle, Eye, EyeOff } from 'lucide-react';
 import { supabase } from '../services/supabase';
 import { pokerActions } from '../services/gameActions';
@@ -90,16 +91,35 @@ export default function ChatRoom({ roomCode, username, room }) {
   useEffect(() => {
     let alive = true;
     let channel = null;
+    let events = null;
     async function loadMessages() {
+      if (isLocalBackend) {
+        const response = await fetch(`/api/db/poker_messages?select=id,username,text,created_at&eq=room_code:${encodeURIComponent(roomCode)}&order=created_at.asc&limit=100`);
+        const body = await response.json();
+        if (alive && response.ok) setMessages(body?.data || []);
+        return;
+      }
       const { data, error } = await supabase.from('poker_messages').select('id, username, text, created_at').eq('room_code', roomCode).order('created_at', { ascending: true }).limit(100);
       if (!error && alive) setMessages(data || []);
     }
     loadMessages();
-    channel = supabase.channel('poker-chat-' + roomCode).on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'poker_messages', filter: 'room_code=eq.' + roomCode }, (payload) => {
-      if (!alive) return;
-      setMessages((prev) => prev.some((m) => m.id === payload.new.id) ? prev : [...prev, payload.new].slice(-100));
-    }).subscribe();
-    return () => { alive = false; if (channel) supabase.removeChannel(channel); };
+    if (isLocalBackend) {
+      events = new EventSource('/api/events');
+      events.addEventListener('change', event => {
+        try {
+          const payload = JSON.parse(event.data);
+          if (payload?.table === 'poker_messages' && payload?.event === 'INSERT' && payload?.new?.room_code === roomCode) {
+            setMessages(prev => prev.some(m => m.id === payload.new.id) ? prev : [...prev, payload.new].slice(-100));
+          }
+        } catch {}
+      });
+    } else {
+      channel = supabase.channel('poker-chat-' + roomCode).on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'poker_messages', filter: 'room_code=eq.' + roomCode }, (payload) => {
+        if (!alive) return;
+        setMessages((prev) => prev.some((m) => m.id === payload.new.id) ? prev : [...prev, payload.new].slice(-100));
+      }).subscribe();
+    }
+    return () => { alive = false; if (events) events.close(); if (channel) supabase.removeChannel(channel); };
   }, [roomCode]);
 
   useEffect(() => {
@@ -124,8 +144,14 @@ export default function ChatRoom({ roomCode, username, room }) {
     }
     setSending(true);
     try {
-      const { error } = await supabase.from('poker_messages').insert({ room_code: roomCode, username, text });
-      if (!error) setInput('');
+      if (isLocalBackend) {
+        const response = await fetch('/api/db/poker_messages', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ room_code: roomCode, username, text }) });
+        if (!response.ok) throw new Error('消息发送失败');
+        setInput('');
+      } else {
+        const { error } = await supabase.from('poker_messages').insert({ room_code: roomCode, username, text });
+        if (!error) setInput('');
+      }
     } finally { setSending(false); }
   }
 
