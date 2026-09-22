@@ -2,6 +2,7 @@ import { isLocalBackend } from "./backendMode";
 import { supabase } from "./supabase";
 
 const localKey = key => `river-poker:${key}`;
+const localSession = () => sessionStorage;
 
 function notify() {
   try { window.dispatchEvent(new Event("river-poker-storage")); } catch {}
@@ -78,7 +79,7 @@ async function getLocalUserProfile(username) {
 const onlineStorage = {
   async get(key) {
     if (key === "poker:session") {
-      const value = localStorage.getItem(localKey(key));
+      const value = localSession().getItem(localKey(key));
       return value === null ? null : { value };
     }
 
@@ -172,7 +173,7 @@ const onlineStorage = {
 
   async set(key, value, options = {}) {
     if (key === "poker:session") {
-      localStorage.setItem(localKey(key), value);
+      localSession().setItem(localKey(key), value);
       notify();
       return { success: true };
     }
@@ -236,7 +237,7 @@ const onlineStorage = {
 
   async delete(key) {
     if (key === "poker:session") {
-      localStorage.removeItem(localKey(key));
+      localSession().removeItem(localKey(key));
       notify();
       return { success: true };
     }
@@ -255,7 +256,7 @@ const onlineStorage = {
 const localStorageAdapter = {
   async get(key) {
     if (key === "poker:session") {
-      const value = localStorage.getItem(localKey(key));
+      const value = localSession().getItem(localKey(key));
       return value === null ? null : { value };
     }
     if (key === "poker:users") {
@@ -313,7 +314,7 @@ const localStorageAdapter = {
 
   async set(key, value, options = {}) {
     if (key === "poker:session") {
-      localStorage.setItem(localKey(key), value); notify(); return { success: true };
+      localSession().setItem(localKey(key), value); notify(); return { success: true };
     }
     if (key === "poker:users") {
       const users = JSON.parse(value || "{}");
@@ -344,7 +345,7 @@ const localStorageAdapter = {
 
   async delete(key) {
     if (key === "poker:session") {
-      localStorage.removeItem(localKey(key)); notify(); return { success: true };
+      localSession().removeItem(localKey(key)); notify(); return { success: true };
     }
     if (key.startsWith("poker:room:")) {
       const code = key.replace("poker:room:", "");
