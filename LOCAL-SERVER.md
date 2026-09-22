@@ -1,13 +1,13 @@
 # 河畔牌局：家庭服务器版
 
-这个分支把原来的 Supabase 数据层替换成了本机 Node.js + SQLite 服务端，同时保留现有 React 游戏界面和牌局逻辑。
+这个家庭服务器模式使用本机 Node.js + SQLite，同时复用现有 React 游戏界面和 Supabase 版本的牌局引擎。在线部署仍可继续使用原来的 Supabase 后端；两种模式由 `VITE_BACKEND_MODE` 控制，本地服务器在 8787 端口会自动选择 SQLite。
 
 ## 环境要求
 
-- Node.js 22.13+（推荐当前 LTS）
+- Node.js 22.18+（推荐 Node 24/当前 LTS）
 - Windows / Linux / macOS 均可
 
-Node 22.13+ 已可直接使用 `node:sqlite`，不需要额外安装 SQLite 驱动。
+Node 22.18+ 已可直接使用 `node:sqlite`，并且可以直接运行本项目复用的 TypeScript 牌局引擎，不需要额外安装 SQLite 驱动或 TypeScript 运行器。
 
 ## 启动
 
