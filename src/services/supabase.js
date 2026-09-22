@@ -1,12 +1,9 @@
 import { createClient } from "@supabase/supabase-js";
+import { isLocalBackend } from "./backendMode";
 
 const url = import.meta.env.VITE_SUPABASE_URL;
 const key = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
 const HTTP_TIMEOUT_MS = 12000;
-
-if (!url || !key || url.includes("YOUR-PROJECT")) {
-  console.warn("Supabase 环境变量未配置：请检查 .env.local 中的 VITE_SUPABASE_URL / VITE_SUPABASE_PUBLISHABLE_KEY");
-}
 
 async function fetchWithTimeout(input, init = {}) {
   const controller = new AbortController();
@@ -29,13 +26,19 @@ async function fetchWithTimeout(input, init = {}) {
   }
 }
 
-export const supabase = createClient(url || "", key || "", {
-  auth: {
-    persistSession: false,
-    autoRefreshToken: false,
-    detectSessionInUrl: false,
-  },
-  global: {
-    fetch: fetchWithTimeout,
-  },
-});
+if (!isLocalBackend && (!url || !key || url.includes("YOUR-PROJECT"))) {
+  console.warn("Supabase 环境变量未配置：请检查 .env.local 中的 VITE_SUPABASE_URL / VITE_SUPABASE_PUBLISHABLE_KEY");
+}
+
+export const supabase = isLocalBackend
+  ? null
+  : createClient(url || "", key || "", {
+      auth: {
+        persistSession: false,
+        autoRefreshToken: false,
+        detectSessionInUrl: false,
+      },
+      global: {
+        fetch: fetchWithTimeout,
+      },
+    });
