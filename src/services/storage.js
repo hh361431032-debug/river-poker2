@@ -257,10 +257,19 @@ const localStorageAdapter = {
   },
 
   async setDealerImage(imageUrl) {
-    await localDb("poker_users", {
-      method: "POST",
-      body: { username: "莫拉咕", password_hash: "", chips: 1000, avatar_url: null, dealer_image_url: imageUrl || null, __upsert: true },
-    });
+    const existing = await localDb("poker_users", { query: { eq: "username:莫拉咕", single: 1, select: "username" } });
+    if (existing) {
+      await localDb("poker_users", {
+        method: "PATCH",
+        query: { eq: "username:莫拉咕" },
+        body: { dealer_image_url: imageUrl || null },
+      });
+    } else {
+      await localDb("poker_users", {
+        method: "POST",
+        body: { username: "莫拉咕", password_hash: "", chips: 1000, avatar_url: null, dealer_image_url: imageUrl || null },
+      });
+    }
     notify();
     return { success: true };
   },
