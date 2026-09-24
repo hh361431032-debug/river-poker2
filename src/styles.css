@@ -29,3 +29,23 @@
 /* v6 player interactions */
 .interaction-panel{max-width:760px;margin:10px auto 0;min-height:44px;display:flex;align-items:center;justify-content:center;gap:7px;flex-wrap:wrap;padding:8px 10px;border:1px solid rgba(201,162,39,.25);background:#0003;border-radius:10px;color:#aaa394;font-size:11px}.interaction-panel b{color:#e8c75f}.interaction-panel button{border:1px solid #ffffff22;background:#19382e;color:#f3ecd8;border-radius:8px;padding:7px 10px;cursor:pointer;font-size:11px}.interaction-panel button:hover:not(:disabled){transform:translateY(-1px);border-color:#c9a22788}.interaction-panel button:disabled{opacity:.35;cursor:not-allowed}.interaction-panel .cancel-throw{background:transparent;color:#aaa394}.seat{cursor:pointer}.seat.targeted{filter:drop-shadow(0 0 10px #e06b55)}.target-badge{position:absolute;left:50%;transform:translateX(-50%);top:-18px;padding:2px 6px;border-radius:999px;background:#a84b3d;color:#fff5ed;font-size:8px;font-weight:800;white-space:nowrap;pointer-events:none}.throw-projectile{position:absolute;left:var(--x1);top:var(--y1);z-index:30;font-size:28px;line-height:1;pointer-events:none;transform:translate(-50%,-50%);animation:throwFlight .72s cubic-bezier(.2,.8,.25,1) forwards;filter:drop-shadow(0 3px 4px #0009)}@keyframes throwFlight{0%{left:var(--x1);top:var(--y1);transform:translate(-50%,-50%) scale(.55) rotate(0deg);opacity:0}12%{opacity:1}50%{transform:translate(-50%,-50%) scale(1.15) rotate(220deg);left:calc((var(--x1) + var(--x2))/2);top:calc((var(--y1) + var(--y2))/2 - 8%)}100%{left:var(--x2);top:var(--y2);transform:translate(-50%,-50%) scale(.75) rotate(500deg);opacity:0}}
 @media(max-width:520px){.interaction-panel{font-size:9px;gap:4px;padding:6px}.interaction-panel button{padding:6px 7px;font-size:9px}.throw-projectile{font-size:23px}}
+
+
+/* v7 mobile overflow fix: prevent any child from creating horizontal page scroll. */
+html,body,#root{max-width:100%;}
+@media(max-width:700px){
+  html,body,#root{overflow-x:clip!important;}
+  .game-page{width:100%;max-width:100%;overflow-x:clip!important;}
+  .game-top,.game-layout,.table-area,.dealer-box,.game-log,.interaction-panel,.actions,.chat-panel{max-width:100%;}
+  .dealer-box{width:100%;overflow:hidden;}
+  .dealer-info{min-width:0;max-width:calc(100% - 170px);overflow:hidden;}
+  .dealer-text,.dealer-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .game-user-tools{min-width:0;}
+  .game-title-text{min-width:0;}
+  .actions{overflow-x:hidden;}
+}
+@media(max-width:420px){
+  .dealer-box{width:100%;}
+  .dealer-info{max-width:calc(100% - 145px);padding:9px 10px;}
+  .dealer-card-stack{width:38px;transform:scale(.85);transform-origin:left center;}
+}
