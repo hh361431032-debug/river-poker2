@@ -49,3 +49,10 @@ html,body,#root{max-width:100%;}
   .dealer-info{max-width:calc(100% - 145px);padding:9px 10px;}
   .dealer-card-stack{width:38px;transform:scale(.85);transform-origin:left center;}
 }
+
+
+/* v8 chat input must remain interactive above auxiliary overlays. */
+.chat-panel{position:relative;}
+.chat-input-row{position:relative;z-index:100;flex-shrink:0;background:#111f1b;}
+.chat-input-row input{pointer-events:auto;user-select:text;-webkit-user-select:text;}
+.chat-input-row button{pointer-events:auto;}
