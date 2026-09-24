@@ -9,7 +9,14 @@ import Lobby from "./components/Lobby";
 import GameTable, { WaitingRoom } from "./components/PokerTable";
 
 function RoomController({code,username,avatar,initialState=null,initialPlayerToken="",onAvatarChange,onLeaveLobby}){
-  const [room,setRoom]=useState(initialState),[pendingAction,setPendingAction]=useState(null), busy=useRef(false), roomJsonRef=useRef(initialState?JSON.stringify(initialState):""), roomUpdatedAtRef=useRef(null), roomVersionRef=useRef(initialState?.version||0), playerTokenRef=useRef(initialPlayerToken||"");
+  const [room,setRoom]=useState(initialState),[pendingAction,setPendingAction]=useState(null),busy=useRef(false);
+  const roomJsonRef=useRef(initialState?JSON.stringify(initialState):"");
+  const roomUpdatedAtRef=useRef(null);
+  const roomVersionRef=useRef(initialState?.version||0);
+  const playerTokenRef=useRef(initialPlayerToken||"");
+  const retryTimerRef=useRef(null);
+  const stoppedRef=useRef(false);
+
   const applyServerResult=useCallback((res)=>{
     if(!res?.state)return false;
     const json=JSON.stringify(res.state);
@@ -20,25 +27,58 @@ function RoomController({code,username,avatar,initialState=null,initialPlayerTok
     setRoom(res.state);
     return true;
   },[]);
+
+  const scheduleRetry=useCallback(()=>{
+    if(stoppedRef.current||retryTimerRef.current)return;
+    retryTimerRef.current=setTimeout(()=>{
+      retryTimerRef.current=null;
+      load(null,true);
+    },2000);
+  },[]);
+
   const load=useCallback(async(payload=null,force=false)=>{
-    if(busy.current&&!force)return;
+    if(stoppedRef.current)return;
     const incomingVersion=Number(payload?.new?.version||0);
     if(incomingVersion&&incomingVersion<=Number(roomVersionRef.current||0))return;
+    if(busy.current&&!force)return;
+
     try{
       const token=playerTokenRef.current;
-      let res;
-      if(token)res=await pokerActions.getRoom(code,username,token);
-      else res=await pokerActions.joinRoom(code,username,avatar||null);
-      if(res?.deleted){onLeaveLobby();return;}
-      if(res?.member===false)res=await pokerActions.joinRoom(code,username,avatar||null);
+      const res=token
+        ? await pokerActions.getRoom(code,username,token)
+        : await pokerActions.joinRoom(code,username,avatar||null);
+
+      if(stoppedRef.current)return;
+
+      // 房间确实被删除，或者服务端明确返回“你已不在房间”时才退出。
+      // 普通网络/Realtime/请求失败绝不能把正在对局的玩家踢回大厅。
+      if(res?.deleted){
+        onLeaveLobby();
+        return;
+      }
+      if(res?.member===false){
+        onLeaveLobby();
+        return;
+      }
+
       applyServerResult(res);
     }catch(err){
-      console.error("[河畔牌局] 房间加载失败：",err);
-      onLeaveLobby();
+      console.error("[河畔牌局] 房间同步失败，不退出牌桌：",err);
+      // 已经有牌桌状态时保留当前画面，后台重试。
+      // 这条路径专门防止 Supabase/网络瞬时错误导致 onLeaveLobby()。
+      if(roomJsonRef.current)scheduleRetry();
+      else if(!stoppedRef.current){
+        // 初次进入且还没有任何房间状态，才允许继续重试；
+        // 仍然不因为一次请求失败直接回大厅。
+        scheduleRetry();
+      }
     }
-  },[code,username,avatar,onLeaveLobby,applyServerResult]);
+  },[code,username,avatar,onLeaveLobby,applyServerResult,scheduleRetry]);
+
   useEffect(()=>{
     let stopped=false;
+    stoppedRef.current=false;
+
     if(!initialState)load();
 
     if(isLocalBackend){
@@ -49,7 +89,13 @@ function RoomController({code,username,avatar,initialState=null,initialPlayerTok
           if(payload?.table==="poker_rooms")load(payload);
         }catch{}
       });
-      return()=>{stopped=true;unsubscribe();};
+      return()=>{
+        stopped=true;
+        stoppedRef.current=true;
+        if(retryTimerRef.current)clearTimeout(retryTimerRef.current);
+        retryTimerRef.current=null;
+        unsubscribe();
+      };
     }
 
     const realtimeReadyRef={current:false};
@@ -58,20 +104,35 @@ function RoomController({code,username,avatar,initialState=null,initialPlayerTok
       .subscribe(status=>{
         realtimeReadyRef.current=status==="SUBSCRIBED";
         console.info("[河畔牌局] Realtime:",status);
+        if(status!=="SUBSCRIBED")scheduleRetry();
       });
+
+    // Realtime 断线后不再依赖“永远等它恢复”。
+    // 定期轻量拉取只用于兜底，版本号会阻止重复覆盖。
     const fallback=setInterval(()=>{
-      if(realtimeReadyRef.current)return;
       load();
-    },2500);
-    return()=>{stopped=true;clearInterval(fallback);supabase.removeChannel(channel);};
-  },[load,code,initialState]);
+    },5000);
+
+    return()=>{
+      stopped=true;
+      stoppedRef.current=true;
+      clearInterval(fallback);
+      if(retryTimerRef.current)clearTimeout(retryTimerRef.current);
+      retryTimerRef.current=null;
+      supabase.removeChannel(channel);
+    };
+  },[load,code,initialState,scheduleRetry]);
+
   const serverAction=useCallback(async(action,extra={})=>{
     if(busy.current)return false;
     busy.current=true;
     setPendingAction(action);
     try{
       const res=await pokerActions[action](code,username,playerTokenRef.current,...Object.values(extra));
-      if(res?.deleted){onLeaveLobby();return true;}
+      if(res?.deleted){
+        onLeaveLobby();
+        return true;
+      }
       return applyServerResult(res);
     }catch(err){
       console.warn("[河畔牌局] 服务器拒绝操作：",err);
@@ -79,10 +140,15 @@ function RoomController({code,username,avatar,initialState=null,initialPlayerTok
         try{await load(null,true);}catch{}
       }
       return false;
-    }finally{busy.current=false;setPendingAction(null);}
+    }finally{
+      busy.current=false;
+      setPendingAction(null);
+    }
   },[code,username,applyServerResult,onLeaveLobby,load]);
+
   const kick=name=>serverAction("kick",{targetName:name});
   const leave=async()=>{const ok=await serverAction("leave");if(ok)onLeaveLobby();};
+
   useEffect(()=>{
     if(!room||room.hostName!==username||room.stage==="handover"||room.stage==="waiting"||!room.turnStartedAt||room.turnIndex==null)return;
     let cancelled=false;
@@ -98,6 +164,7 @@ function RoomController({code,username,avatar,initialState=null,initialPlayerTok
     checkTimeout();
     return()=>{cancelled=true;};
   },[room?.turnStartedAt,room?.turnIndex,room?.stage,room?.handNumber,room?.turnSeconds,room?.hostName,username,serverAction]);
+
   if(!room)return <div className="page loading">加载房间中…</div>;
   if(room.status!=="playing"||room.stage==="waiting")return <WaitingRoom room={room} username={username} pendingAction={pendingAction} onStart={()=>serverAction("startHand")} onLeave={leave} onKick={kick}/>;
   return <GameTable
