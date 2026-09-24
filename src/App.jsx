@@ -16,6 +16,7 @@ function RoomController({code,username,avatar,initialState=null,initialPlayerTok
   const playerTokenRef=useRef(initialPlayerToken||"");
   const retryTimerRef=useRef(null);
   const stoppedRef=useRef(false);
+  const loadRef=useRef(null);
 
   const applyServerResult=useCallback((res)=>{
     if(!res?.state)return false;
@@ -32,7 +33,7 @@ function RoomController({code,username,avatar,initialState=null,initialPlayerTok
     if(stoppedRef.current||retryTimerRef.current)return;
     retryTimerRef.current=setTimeout(()=>{
       retryTimerRef.current=null;
-      load(null,true);
+      loadRef.current?.(null,true);
     },2000);
   },[]);
 
@@ -74,6 +75,8 @@ function RoomController({code,username,avatar,initialState=null,initialPlayerTok
       }
     }
   },[code,username,avatar,onLeaveLobby,applyServerResult,scheduleRetry]);
+
+  loadRef.current=load;
 
   useEffect(()=>{
     let stopped=false;
