@@ -104,6 +104,8 @@ export default function ChatRoom({ roomCode, username, room }) {
       if (!error && alive) setMessages(data || []);
     }
     loadMessages();
+    // Realtime/SSE 断线时，聊天不能因此完全失效；定期补拉最近消息。
+    const pollTimer = setInterval(() => { loadMessages().catch(() => {}); }, 3000);
     if (isLocalBackend) {
       unsubscribeLocal = subscribeLocalEvents(event => {
         try {
@@ -119,7 +121,7 @@ export default function ChatRoom({ roomCode, username, room }) {
         setMessages((prev) => prev.some((m) => m.id === payload.new.id) ? prev : [...prev, payload.new].slice(-100));
       }).subscribe();
     }
-    return () => { alive = false; if (unsubscribeLocal) unsubscribeLocal(); if (channel) supabase.removeChannel(channel); };
+    return () => { alive = false; clearInterval(pollTimer); if (unsubscribeLocal) unsubscribeLocal(); if (channel) supabase.removeChannel(channel); };
   }, [roomCode]);
 
   useEffect(() => {
@@ -147,10 +149,16 @@ export default function ChatRoom({ roomCode, username, room }) {
       if (isLocalBackend) {
         const response = await fetch('/api/db/poker_messages', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ room_code: roomCode, username, text }) });
         if (!response.ok) throw new Error('消息发送失败');
+        const body = await response.json();
+        const saved = body?.data;
+        if (saved) setMessages(prev => prev.some(m => m.id === saved.id) ? prev : [...prev, saved].slice(-100));
         setInput('');
       } else {
-        const { error } = await supabase.from('poker_messages').insert({ room_code: roomCode, username, text });
-        if (!error) setInput('');
+        const { data, error } = await supabase.from('poker_messages').insert({ room_code: roomCode, username, text }).select('id, username, text, created_at').single();
+        if (!error) {
+          if (data) setMessages(prev => prev.some(m => m.id === data.id) ? prev : [...prev, data].slice(-100));
+          setInput('');
+        }
       }
     } finally { setSending(false); }
   }
